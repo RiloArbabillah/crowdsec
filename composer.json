@@ -1,5 +1,5 @@
 {
-    "name": "RiloArbabillah/laravel-crowdsec",
+    "name": "rilo-arbabillah/laravel-crowdsec",
     "description": "A lightweight CrowdSec-like WAF protection package for Laravel",
     "type": "library",
     "license": "MIT",
