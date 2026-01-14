@@ -1,8 +1,8 @@
 # Laravel CrowdSec
 
-[![PHP Version](https://img.shields.io/packagist/php-v/simenawan/laravel-crowdsec.svg)](https://packagist.org/packages/simenawan/laravel-crowdsec)
-[![Laravel Version](https://img.shields.io/packagist/dependency-v/simenawan/laravel-crowdsec/laravel.svg)](https://laravel.com)
-[![License](https://img.shields.io/packagist/license/simenawan/laravel-crowdsec.svg)](LICENSE)
+[![PHP Version](https://img.shields.io/packagist/php-v/RiloArbabillah/laravel-crowdsec.svg)](https://packagist.org/packages/RiloArbabillah/laravel-crowdsec)
+[![Laravel Version](https://img.shields.io/packagist/dependency-v/RiloArbabillah/laravel-crowdsec/laravel.svg)](https://laravel.com)
+[![License](https://img.shields.io/packagist/license/RiloArbabillah/laravel-crowdsec.svg)](LICENSE)
 
 A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package for Laravel applications. This package provides real-time threat detection and IP blocking based on WAF patterns and behavior analysis.
 
@@ -27,7 +27,7 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 Install the package via Composer:
 
 ```bash
-composer require simenawan/laravel-crowdsec
+composer require RiloArbabillah/laravel-crowdsec
 ```
 
 The package will automatically register its service provider and facade.

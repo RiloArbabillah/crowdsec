@@ -1,5 +1,5 @@
 {
-    "name": "simenawan/laravel-crowdsec",
+    "name": "RiloArbabillah/laravel-crowdsec",
     "description": "A lightweight CrowdSec-like WAF protection package for Laravel",
     "type": "library",
     "license": "MIT",
@@ -17,21 +17,21 @@
     },
     "autoload": {
         "psr-4": {
-            "Simenawan\\LaravelCrowdSec\\": "src/"
+            "RiloArbabillah\\LaravelCrowdSec\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Simenawan\\LaravelCrowdSec\\Tests\\": "tests/"
+            "RiloArbabillah\\LaravelCrowdSec\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Simenawan\\LaravelCrowdSec\\CrowdSecServiceProvider"
+                "RiloArbabillah\\LaravelCrowdSec\\CrowdSecServiceProvider"
             ],
             "facades": {
-                "CrowdSec": "Simenawan\\LaravelCrowdSec\\Facades\\CrowdSec"
+                "CrowdSec": "RiloArbabillah\\LaravelCrowdSec\\Facades\\CrowdSec"
             }
         }
     },

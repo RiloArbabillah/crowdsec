@@ -1,6 +1,6 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec\Models;
+namespace RiloArbabillah\LaravelCrowdSec\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;

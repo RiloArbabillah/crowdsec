@@ -1,12 +1,12 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec;
+namespace RiloArbabillah\LaravelCrowdSec;
 
 use Illuminate\Support\ServiceProvider;
-use Simenawan\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
-use Simenawan\LaravelCrowdSec\Console\Commands\CrowdSecStats;
-use Simenawan\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
-use Simenawan\LaravelCrowdSec\Services\CrowdSecService;
+use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
+use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
+use RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
+use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecServiceProvider extends ServiceProvider
 {

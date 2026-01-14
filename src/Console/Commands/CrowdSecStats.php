@@ -1,10 +1,10 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec\Console\Commands;
+namespace RiloArbabillah\LaravelCrowdSec\Console\Commands;
 
 use Illuminate\Console\Command;
-use Simenawan\LaravelCrowdSec\Models\BlockedIp;
-use Simenawan\LaravelCrowdSec\Models\SecurityEvent;
+use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
+use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class CrowdSecStats extends Command
 {

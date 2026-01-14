@@ -1,13 +1,13 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec\Services;
+namespace RiloArbabillah\LaravelCrowdSec\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Simenawan\LaravelCrowdSec\Models\BlockedIp;
-use Simenawan\LaravelCrowdSec\Models\IpBehavior;
-use Simenawan\LaravelCrowdSec\Models\SecurityEvent;
+use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
+use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
+use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class CrowdSecService
 {

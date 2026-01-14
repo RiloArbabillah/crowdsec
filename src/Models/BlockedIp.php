@@ -1,10 +1,10 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec\Models;
+namespace RiloArbabillah\LaravelCrowdSec\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Simenawan\LaravelCrowdSec\Models\SecurityEvent;
+use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class BlockedIp extends Model
 {

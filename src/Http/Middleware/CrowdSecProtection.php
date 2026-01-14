@@ -1,12 +1,12 @@
 <?php
 
-namespace Simenawan\LaravelCrowdSec\Http\Middleware;
+namespace RiloArbabillah\LaravelCrowdSec\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
-use Simenawan\LaravelCrowdSec\Services\CrowdSecService;
+use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecProtection
 {
