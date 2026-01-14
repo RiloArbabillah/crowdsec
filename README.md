@@ -386,48 +386,6 @@ protected function schedule(Schedule $schedule)
 - Behavior tracking uses efficient increment operations
 - Consider caching blocked IPs for very high-traffic sites
 
-## Publishing to Packagist
-
-### 1. Prepare Your Repository
-
-Ensure your GitHub repository has:
-- Clean `composer.json` with correct metadata
-- README.md (this file)
-- LICENSE file (MIT recommended)
-- Tagged versions following semantic versioning
-
-### 2. Submit to Packagist
-
-1. Go to [packagist.org](https://packagist.org)
-2. Sign in with your GitHub account
-3. Click "Submit Package"
-4. Enter your repository URL: `https://github.com/yourusername/laravel-crowdsec`
-
-### 3. Set Up Auto-Updates
-
-1. In your GitHub repository, go to Settings > Webhooks
-2. Add a webhook:
-   - URL: `https://packagist.org/api/github?username=your-username`
-   - Content type: `application/json`
-   - Events: Push events
-
-Now Packagist will automatically update when you push new tags.
-
-### 4. Tagging New Versions
-
-```bash
-# Create a new version
-git tag -a v1.1.0 -m "Release v1.1.0"
-
-# Push the tag
-git push origin v1.1.0
-```
-
-Follow [Semantic Versioning](https://semver.org):
-- `MAJOR`: Breaking changes
-- `MINOR`: New features (backward compatible)
-- `PATCH`: Bug fixes
-
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
