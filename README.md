@@ -108,7 +108,7 @@ Add the middleware to your HTTP kernel for global protection:
 
 protected $middlewareAliases = [
     // ...
-    'crowdsec' => \Simenawan\LaravelCrowdSec\Http\Middleware\CrowdSecProtection::class,
+    'crowdsec' => \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection::class,
 ];
 ```
 
@@ -144,7 +144,7 @@ Use the `CrowdSec` facade for programmatic control:
 ### Check if IP is Blocked
 
 ```php
-use Simenawan\LaravelCrowdSec\Facades\CrowdSec;
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 $ip = request()->ip();
 
@@ -156,7 +156,7 @@ if (CrowdSec::isBlocked($ip)) {
 ### Manually Block an IP
 
 ```php
-use Simenawan\LaravelCrowdSec\Facades\CrowdSec;
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 // Block for 60 minutes
 CrowdSec::blockIp($request->ip(), 'Manual ban - spam', 60);
@@ -168,7 +168,7 @@ CrowdSec::blockIp($request->ip(), 'Suspicious activity', 1440);
 ### Unblock an IP
 
 ```php
-use Simenawan\LaravelCrowdSec\Facades\CrowdSec;
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 CrowdSec::unblockIp($ip);
 ```
@@ -178,7 +178,7 @@ CrowdSec::unblockIp($ip);
 Call this after failed login attempts for brute-force protection:
 
 ```php
-use Simenawan\LaravelCrowdSec\Facades\CrowdSec;
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 public function login(Request $request)
 {
@@ -199,7 +199,7 @@ public function login(Request $request)
 ### Analyze Request for Threats
 
 ```php
-use Simenawan\LaravelCrowdSec\Facades\CrowdSec;
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 $threats = CrowdSec::analyzeRequest($request);
 
