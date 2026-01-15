@@ -29,8 +29,8 @@ class CrowdSecProtection
             return $next($request);
         }
 
-        // 2. Check if IP is already blocked
-        if ($this->service->isBlocked($ip)) {
+        // 2. Check if IP is already blocked (skip for authenticated users)
+        if ($this->service->isBlocked($ip) && ! auth()->check()) {
             return $this->blockedResponse($ip, 'IP is blocked');
         }
 
@@ -83,8 +83,8 @@ class CrowdSecProtection
         // 4. Track behavior
         $this->service->trackBehavior($ip, $request->path());
 
-        // 5. Check behavior thresholds
-        if ($this->service->exceedsBehaviorThreshold($ip)) {
+        // 5. Check behavior thresholds (skip for authenticated users)
+        if (! auth()->check() && $this->service->exceedsBehaviorThreshold($ip)) {
             $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
 
             return $this->blockedResponse($ip, 'Rate limit exceeded');

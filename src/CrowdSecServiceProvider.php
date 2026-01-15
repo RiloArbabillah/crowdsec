@@ -2,10 +2,13 @@
 
 namespace RiloArbabillah\LaravelCrowdSec;
 
+use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
 use RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
+use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecServiceProvider extends ServiceProvider
@@ -51,5 +54,23 @@ class CrowdSecServiceProvider extends ServiceProvider
         // Register middleware
         $router = $this->app['router'];
         $router->aliasMiddleware('crowdsec', CrowdSecProtection::class);
+
+        // Listen for successful authentication to unblock IP and reset login attempts
+        Event::listen(Authenticated::class, function (Authenticated $event) {
+            $ip = request()->ip() ?? 'unknown';
+            $service = app(CrowdSecService::class);
+
+            // Unblock the IP if it was blocked
+            $service->unblockIp($ip);
+
+            // Reset login attempts and threat score for this IP
+            $behavior = IpBehavior::where('ip', $ip)->first();
+            if ($behavior) {
+                $behavior->update([
+                    'login_attempts' => 0,
+                    'threat_score' => 0,
+                ]);
+            }
+        });
     }
 }
