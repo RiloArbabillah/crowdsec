@@ -13,6 +13,9 @@
  */
 
 return [
+    // Enable/disable the package
+    'enabled' => true,
+
     // SQL Injection patterns
     'sql_injection' => [
         'patterns' => [

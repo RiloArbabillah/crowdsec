@@ -22,6 +22,11 @@ class CrowdSecProtection
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Check if package is enabled
+        if (! config('crowdsec-scenarios.enabled', true)) {
+            return $next($request);
+        }
+
         $ip = $request->ip() ?? 'unknown';
 
         // 1. Skip for whitelisted IPs first (performance)
