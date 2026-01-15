@@ -220,4 +220,13 @@ return [
         '127.0.0.1',
         '::1',
     ],
+
+    // Login routes - these routes will use login_threshold instead of WAF patterns
+    'login_routes' => [
+        'login',
+        'auth/login',
+        'admin/login',
+        'filament/auth/login',
+        'filament/login',
+    ],
 ];

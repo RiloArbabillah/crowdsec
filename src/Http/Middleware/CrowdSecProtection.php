@@ -34,7 +34,22 @@ class CrowdSecProtection
             return $this->blockedResponse($ip, 'IP is blocked');
         }
 
-        // 3. Run WAF pattern detection
+        // 3. Check if this is a login request
+        if ($this->isLoginRequest($request)) {
+            // For login requests: track attempt and check login threshold
+            $this->service->trackLoginAttempt($ip);
+
+            if ($this->service->exceedsLoginThreshold($ip)) {
+                $this->service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
+
+                return $this->blockedResponse($ip, 'Too many login attempts');
+            }
+
+            // Allow login request through (skip WAF patterns for passwords)
+            return $next($request);
+        }
+
+        // 4. For non-login requests: run WAF pattern detection
         $threats = $this->service->analyzeRequest($request);
 
         if (! empty($threats)) {
@@ -90,6 +105,27 @@ class CrowdSecProtection
         }
 
         return in_array($ip, $whitelist);
+    }
+
+    /**
+     * Check if the request is a login attempt
+     */
+    protected function isLoginRequest(Request $request): bool
+    {
+        if ($request->method() !== 'POST') {
+            return false;
+        }
+
+        $loginRoutes = config('crowdsec-scenarios.login_routes', ['login']);
+        $path = $request->path();
+
+        foreach ($loginRoutes as $route) {
+            if ($path === $route || fnmatch($route, $path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
