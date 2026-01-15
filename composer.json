@@ -3,6 +3,7 @@
     "description": "A lightweight CrowdSec-like WAF protection package for Laravel",
     "type": "library",
     "license": "MIT",
+    "version": "1.0.0-alpha",
     "require": {
         "php": "^8.1",
         "illuminate/contracts": "^10.0|^11.0",
@@ -39,7 +40,7 @@
         "optimize-autoloader": true,
         "sort-packages": true
     },
-    "minimum-stability": "stable",
+    "minimum-stability": "dev",
     "prefer-stable": true,
     "scripts": {
         "test": "phpunit"
