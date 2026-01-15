@@ -42,10 +42,32 @@ php artisan vendor:publish --tag=crowdsec-config
 
 This will create `config/crowdsec-scenarios.php` where you can:
 
+- Enable or disable the package
 - Configure detection patterns for each attack type
 - Adjust behavior thresholds (request limits, 404 limits, login attempts)
 - Set block durations per severity
 - Whitelist IPs that should never be blocked
+
+### Enabling/Disabling the Package
+
+You can toggle the package on or off via configuration:
+
+```php
+// config/crowdsec-scenarios.php
+
+return [
+    // Enable or disable the entire package
+    'enabled' => true,  // Set to false to disable all protection
+
+    // ... rest of configuration
+];
+```
+
+When disabled, the middleware will pass all requests through without any filtering or blocking. This is useful for:
+
+- Development environments where you need to test without WAF interference
+- Debugging specific issues without protection blocking legitimate traffic
+- Temporary maintenance windows
 
 ### Default Configuration
 
@@ -53,6 +75,9 @@ This will create `config/crowdsec-scenarios.php` where you can:
 // config/crowdsec-scenarios.php
 
 return [
+    // Enable/disable the package
+    'enabled' => true,
+
     // Whitelist IPs (won't be blocked)
     'whitelist_ips' => [
         '127.0.0.1',
