@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::create('security_events', function (Blueprint $table) {
             $table->id();
             $table->string('ip', 45)->index();
-            $table->string('event_type', 100)->index();
+            $table->string('event_type', 255)->index();
             $table->string('severity', 20)->default('medium');
             $table->json('request_data')->nullable();
             $table->string('user_agent')->nullable();
@@ -33,7 +33,7 @@ return new class extends Migration
             $table->id();
             $table->string('ip', 45)->unique();
             $table->text('reason')->nullable();
-            $table->string('event_type', 100)->nullable();
+            $table->string('event_type', 255)->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->boolean('is_active')->default(true);
             $table->unsignedBigInteger('created_by')->nullable();

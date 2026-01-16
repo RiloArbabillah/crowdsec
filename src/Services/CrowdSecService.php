@@ -277,7 +277,7 @@ class CrowdSecService
      */
     public function logEvent(string $ip, array $threats, Request $request): SecurityEvent
     {
-        $eventTypes = array_column($threats, 'type');
+        $eventTypes = array_unique(array_column($threats, 'type'));
         $severities = array_column($threats, 'severity');
         $maxSeverity = ! empty($severities) ? max($severities) : 'medium';
 
