@@ -35,9 +35,6 @@ class CrowdSecServiceProvider extends ServiceProvider
         // Load migrations
         $this->loadMigrationsFrom(__DIR__.'/Database/Migrations');
 
-        // Load translations
-        $this->loadTranslationsFrom(__DIR__.'/lang', 'crowdsec');
-
         // Publish config
         $this->publishes([
             __DIR__.'/../config/crowdsec-scenarios.php' => config_path('crowdsec-scenarios.php'),
@@ -58,7 +55,7 @@ class CrowdSecServiceProvider extends ServiceProvider
         // Listen for successful authentication to unblock IP and reset login attempts
         Event::listen(Authenticated::class, function (Authenticated $event) {
             $ip = request()->ip() ?? 'unknown';
-            $service = app(CrowdSecService::class);
+            $service = app('crowdsec');
 
             // Unblock the IP if it was blocked
             $service->unblockIp($ip);

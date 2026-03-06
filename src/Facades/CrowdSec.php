@@ -5,10 +5,12 @@ namespace RiloArbabillah\LaravelCrowdSec\Facades;
 use Illuminate\Support\Facades\Facade;
 
 /**
+ * @method static bool isEnabled()
  * @method static bool isBlocked(string $ip)
  * @method static array analyzeRequest(\Illuminate\Http\Request $request)
  * @method static array checkWafPatterns(\Illuminate\Http\Request $request)
  * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior trackBehavior(string $ip, string $path)
+ * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior track404(string $ip)
  * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior trackLoginAttempt(string $ip)
  * @method static bool exceedsBehaviorThreshold(string $ip)
  * @method static bool exceedsLoginThreshold(string $ip)
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static int cleanupExpiredBans()
  * @method static array getStats()
  * @method static array getBlockingThreats(array $threats)
+ * @method static string getMaxSeverity(array $severities)
  */
 class CrowdSec extends Facade
 {

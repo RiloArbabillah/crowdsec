@@ -23,10 +23,30 @@ class CrowdSecProtection
     public function handle(Request $request, Closure $next): Response
     {
         // Check if package is enabled
-        if (! config('crowdsec-scenarios.enabled', true)) {
+        if (! $this->service->isEnabled()) {
             return $next($request);
         }
 
+        // Wrap everything in try-catch so WAF errors never crash the application
+        try {
+            return $this->processRequest($request, $next);
+        } catch (\Throwable $e) {
+            Log::error('CrowdSec: Middleware error — request allowed through', [
+                'error' => $e->getMessage(),
+                'ip' => $request->ip(),
+                'path' => $request->path(),
+            ]);
+
+            // Fail open: allow request through if WAF encounters an error
+            return $next($request);
+        }
+    }
+
+    /**
+     * Process the request through all security checks.
+     */
+    protected function processRequest(Request $request, Closure $next): Response
+    {
         $ip = $request->ip() ?? 'unknown';
 
         // 1. Skip for whitelisted IPs first (performance)
@@ -34,9 +54,9 @@ class CrowdSecProtection
             return $next($request);
         }
 
-        // 2. Check if IP is already blocked (skip for authenticated users)
-        if ($this->service->isBlocked($ip) && ! auth()->check()) {
-            return $this->blockedResponse($ip, 'IP is blocked');
+        // 2. Check if IP is already blocked
+        if ($this->service->isBlocked($ip)) {
+            return $this->blockedResponse($request, 'IP is blocked');
         }
 
         // 3. Check if this is a login request
@@ -47,7 +67,7 @@ class CrowdSecProtection
             if ($this->service->exceedsLoginThreshold($ip)) {
                 $this->service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
 
-                return $this->blockedResponse($ip, 'Too many login attempts');
+                return $this->blockedResponse($request, 'Too many login attempts');
             }
 
             // Allow login request through (skip WAF patterns for passwords)
@@ -58,48 +78,46 @@ class CrowdSecProtection
         $threats = $this->service->analyzeRequest($request);
 
         if (! empty($threats)) {
-            // Separate blocking threats (critical + high + medium) from low
-            $blockingThreats = $this->service->getBlockingThreats($threats);
-            $nonBlockingThreats = array_filter($threats, fn ($t) => ! in_array(($t['severity'] ?? 'medium'), ['critical', 'high', 'medium']));
-
-            // Log all threats
+            // Log the event (single place — no more duplicate logging)
             $this->service->logEvent($ip, $threats, $request);
 
-            // Block if critical or high severity threats exist
+            // Separate blocking threats (critical + high + medium) from low
+            $blockingThreats = $this->service->getBlockingThreats($threats);
+
+            // Block if blocking-level threats exist
             if (! empty($blockingThreats)) {
-                $reason = collect($blockingThreats)->pluck('type')->implode(', ');
-                $this->service->blockIp($ip, "Threat: {$reason}", null, $blockingThreats[0]['type'] ?? 'security_threat');
+                $reason = collect($blockingThreats)->pluck('type')->unique()->implode(', ');
+                $firstType = $blockingThreats[array_key_first($blockingThreats)]['type'] ?? 'security_threat';
+                $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
 
-                return $this->blockedResponse($ip, 'Malicious pattern detected');
+                return $this->blockedResponse($request, 'Malicious pattern detected');
             }
 
-            // For low: log warning
-            if (! empty($nonBlockingThreats)) {
-                Log::warning('CrowdSec: Low severity threat detected', [
-                    'ip' => $ip,
-                    'threats' => $nonBlockingThreats,
-                ]);
-            }
-
-            // Continue processing
-            return $next($request);
+            // For low severity: already logged above, continue processing
         }
 
-        // 4. Track behavior
+        // 5. Track behavior
         $this->service->trackBehavior($ip, $request->path());
 
-        // 5. Check behavior thresholds (skip for authenticated users)
-        if (! auth()->check() && $this->service->exceedsBehaviorThreshold($ip)) {
+        // 6. Check behavior thresholds
+        if ($this->service->exceedsBehaviorThreshold($ip)) {
             $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
 
-            return $this->blockedResponse($ip, 'Rate limit exceeded');
+            return $this->blockedResponse($request, 'Rate limit exceeded');
         }
 
-        return $next($request);
+        // 7. Process the request and track 404 responses
+        $response = $next($request);
+
+        if ($response->getStatusCode() === 404) {
+            $this->service->track404($ip);
+        }
+
+        return $response;
     }
 
     /**
-     * Check if IP is whitelisted
+     * Check if IP is whitelisted (supports exact match and CIDR notation)
      */
     protected function isWhitelisted(string $ip): bool
     {
@@ -109,7 +127,50 @@ class CrowdSecProtection
             return false;
         }
 
-        return in_array($ip, $whitelist);
+        foreach ($whitelist as $entry) {
+            // Exact match
+            if ($ip === $entry) {
+                return true;
+            }
+
+            // CIDR match (e.g., 10.0.0.0/8, 192.168.0.0/16)
+            if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if an IP address falls within a CIDR range.
+     * Supports both IPv4 and IPv6.
+     */
+    protected function ipInCidr(string $ip, string $cidr): bool
+    {
+        [$subnet, $bits] = explode('/', $cidr, 2);
+        $bits = (int) $bits;
+
+        $ipBin = @inet_pton($ip);
+        $subnetBin = @inet_pton($subnet);
+
+        if ($ipBin === false || $subnetBin === false) {
+            return false;
+        }
+
+        // Both must be same IP version (same byte length)
+        if (strlen($ipBin) !== strlen($subnetBin)) {
+            return false;
+        }
+
+        // Create mask and compare
+        $mask = str_repeat("\xff", (int) ($bits / 8));
+        if ($bits % 8 > 0) {
+            $mask .= chr(256 - (1 << (8 - ($bits % 8))));
+        }
+        $mask = str_pad($mask, strlen($ipBin), "\x00");
+
+        return ($ipBin & $mask) === ($subnetBin & $mask);
     }
 
     /**
@@ -136,17 +197,16 @@ class CrowdSecProtection
     /**
      * Generate blocked response
      */
-    protected function blockedResponse(string $ip, string $reason): Response
+    protected function blockedResponse(Request $request, string $reason): Response
     {
-        // Log the blocked attempt
-        Log::warning('CrowdSec: Blocked request', [
-            'ip' => $ip,
-            'reason' => $reason,
-            'user_agent' => request()->userAgent(),
-            'path' => request()->path(),
-        ]);
+        $ip = $request->ip() ?? 'unknown';
+
+        $message = config(
+            'crowdsec-scenarios.blocked_response_message',
+            'Forbidden - Your IP has been blocked due to suspicious activity'
+        );
 
         // Return 403 Forbidden
-        return response('Forbidden - Your IP has been blocked due to suspicious activity', 403);
+        return response($message, 403);
     }
 }

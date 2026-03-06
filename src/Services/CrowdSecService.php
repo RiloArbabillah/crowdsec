@@ -13,9 +13,28 @@ class CrowdSecService
 {
     protected array $scenarios;
 
+    /**
+     * Severity weight map for proper comparison.
+     * Higher value = more severe.
+     */
+    protected const SEVERITY_WEIGHTS = [
+        'low' => 1,
+        'medium' => 2,
+        'high' => 3,
+        'critical' => 4,
+    ];
+
     public function __construct()
     {
         $this->scenarios = config('crowdsec-scenarios', []);
+    }
+
+    /**
+     * Check if the package is enabled
+     */
+    public function isEnabled(): bool
+    {
+        return (bool) ($this->scenarios['enabled'] ?? true);
     }
 
     /**
@@ -27,24 +46,12 @@ class CrowdSecService
     }
 
     /**
-     * Analyze a request for security threats
+     * Analyze a request for security threats.
+     * Returns detected threats without logging or blocking — caller is responsible for those.
      */
     public function analyzeRequest(Request $request): array
     {
-        $threats = [];
-        $ip = $request->ip();
-
-        // Check WAF patterns in various request parts
-        $threats = array_merge($threats, $this->checkWafPatterns($request));
-
-        // If critical threats found, block immediately
-        if (! empty($threats)) {
-            $this->logEvent($ip, $threats, $request);
-
-            return $threats;
-        }
-
-        return $threats;
+        return $this->checkWafPatterns($request);
     }
 
     /**
@@ -59,7 +66,7 @@ class CrowdSecService
         $inputsToCheck['query'] = urldecode($request->getQueryString() ?? '');
         $inputsToCheck['path'] = $request->path();
 
-        // Check POST data
+        // Check POST data (skip for login requests — handled separately)
         if ($request->isMethod('POST')) {
             $postData = $this->extractPostData($request);
             foreach ($postData as $key => $value) {
@@ -67,18 +74,32 @@ class CrowdSecService
             }
         }
 
-        // Check headers
+        // Check headers (only specific headers, not body)
         $inputsToCheck['user_agent'] = $request->userAgent() ?? '';
         $inputsToCheck['referer'] = urldecode($request->header('Referer') ?? '');
-        $inputsToCheck['accept_language'] = $request->header('Accept-Language') ?? '';
 
         foreach ($inputsToCheck as $source => $input) {
+            if (! is_string($input) || $input === '') {
+                continue;
+            }
+
             foreach ($this->scenarios as $scenarioName => $config) {
-                if ($scenarioName === 'behavior') {
-                    continue; // Skip behavior thresholds here
+                // Skip non-pattern scenarios
+                if (in_array($scenarioName, ['behavior', 'defaults', 'whitelist_ips', 'login_routes', 'enabled', 'blocked_response_message', 'log_channel'])) {
+                    continue;
                 }
 
-                if (! isset($config['patterns'])) {
+                if (! isset($config['patterns']) || ! is_array($config['patterns'])) {
+                    continue;
+                }
+
+                // Only check 'user_agent' source against suspicious_user_agent scenario
+                if ($scenarioName === 'suspicious_user_agent' && $source !== 'user_agent') {
+                    continue;
+                }
+
+                // Skip suspicious_user_agent for non-user-agent sources
+                if ($scenarioName !== 'suspicious_user_agent' && $source === 'user_agent') {
                     continue;
                 }
 
@@ -92,14 +113,8 @@ class CrowdSecService
                             'weight' => $config['weight'] ?? 5,
                         ];
 
-                        // For critical/high severity, log immediately
-                        if (($config['severity'] ?? 'medium') === 'critical') {
-                            Log::warning('CrowdSec: Critical threat detected', [
-                                'ip' => $request->ip(),
-                                'type' => $scenarioName,
-                                'source' => $source,
-                            ]);
-                        }
+                        // Break after first match per scenario/source to avoid duplicates
+                        break;
                     }
                 }
             }
@@ -138,8 +153,13 @@ class CrowdSecService
     /**
      * Recursively flatten data array for pattern matching
      */
-    protected function flattenData(array $data, string $prefix, array &$flatData): void
+    protected function flattenData(array $data, string $prefix, array &$flatData, int $depth = 0): void
     {
+        // Prevent infinite recursion on deeply nested data
+        if ($depth > 10) {
+            return;
+        }
+
         foreach ($data as $key => $value) {
             $fullKey = $prefix ? "{$prefix}[{$key}]" : $key;
 
@@ -147,7 +167,7 @@ class CrowdSecService
                 // For nested structures (like Livewire components), encode to JSON
                 $flatData[$fullKey] = urldecode(json_encode($value));
                 // Also check individual nested values
-                $this->flattenData($value, $fullKey, $flatData);
+                $this->flattenData($value, $fullKey, $flatData, $depth + 1);
             } else {
                 $flatData[$fullKey] = is_string($value) ? urldecode($value) : (string) $value;
             }
@@ -161,6 +181,17 @@ class CrowdSecService
     {
         $behavior = IpBehavior::getOrCreate($ip);
         $behavior->incrementRequestCount();
+
+        return $behavior;
+    }
+
+    /**
+     * Track 404 response for an IP
+     */
+    public function track404(string $ip): IpBehavior
+    {
+        $behavior = IpBehavior::getOrCreate($ip);
+        $behavior->incrementError404Count();
 
         return $behavior;
     }
@@ -223,30 +254,24 @@ class CrowdSecService
         ?int $durationMinutes = null,
         ?string $eventType = null
     ): BlockedIp {
-        // Check if already blocked to avoid race condition
-        $existing = BlockedIp::where('ip', $ip)->where('is_active', true)->first();
-        if ($existing) {
-            // Update existing block with new expiry
-            $existing->update(['expires_at' => now()->addMinutes($durationMinutes ?? 240)]);
-
-            return $existing;
-        }
-
-        // Determine block duration based on severity
+        // Determine block duration based on severity if not provided
         if ($durationMinutes === null) {
             $severity = $this->getSeverityFromReason($reason);
             $durationMinutes = $this->scenarios['defaults'][$severity] ?? 240;
         }
 
-        $blockedIp = BlockedIp::create([
-            'ip' => $ip,
-            'reason' => $reason,
-            'event_type' => $eventType,
-            'expires_at' => now()->addMinutes($durationMinutes),
-            'is_active' => true,
-        ]);
+        // Use updateOrCreate to handle the unique constraint on 'ip'
+        $blockedIp = BlockedIp::updateOrCreate(
+            ['ip' => $ip],
+            [
+                'reason' => $reason,
+                'event_type' => $eventType,
+                'expires_at' => now()->addMinutes($durationMinutes),
+                'is_active' => true,
+            ]
+        );
 
-        Log::warning('CrowdSec: IP blocked', [
+        $this->log('warning', 'IP blocked', [
             'ip' => $ip,
             'reason' => $reason,
             'duration_minutes' => $durationMinutes,
@@ -260,11 +285,12 @@ class CrowdSecService
      */
     public function unblockIp(string $ip): bool
     {
-        $blockedIp = BlockedIp::where('ip', $ip)->first();
+        $count = BlockedIp::where('ip', $ip)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
 
-        if ($blockedIp) {
-            $blockedIp->update(['is_active' => false]);
-            Log::info('CrowdSec: IP unblocked', ['ip' => $ip]);
+        if ($count > 0) {
+            $this->log('info', 'IP unblocked', ['ip' => $ip]);
 
             return true;
         }
@@ -279,7 +305,7 @@ class CrowdSecService
     {
         $eventTypes = array_unique(array_column($threats, 'type'));
         $severities = array_column($threats, 'severity');
-        $maxSeverity = ! empty($severities) ? max($severities) : 'medium';
+        $maxSeverity = $this->getMaxSeverity($severities);
 
         $event = SecurityEvent::create([
             'ip' => $ip,
@@ -308,7 +334,7 @@ class CrowdSecService
         $count = BlockedIp::expired()->update(['is_active' => false]);
 
         if ($count > 0) {
-            Log::info("CrowdSec: Cleaned up {$count} expired bans");
+            $this->log('info', "Cleaned up {$count} expired bans");
         }
 
         return $count;
@@ -342,22 +368,57 @@ class CrowdSecService
     }
 
     /**
-     * Determine severity from reason
+     * Compare severity levels and return the highest.
+     * Uses numeric weights to avoid alphabetical string comparison bug.
+     */
+    public function getMaxSeverity(array $severities): string
+    {
+        if (empty($severities)) {
+            return 'medium';
+        }
+
+        $maxWeight = 0;
+        $maxSeverity = 'medium';
+
+        foreach ($severities as $severity) {
+            $weight = self::SEVERITY_WEIGHTS[$severity] ?? 0;
+            if ($weight > $maxWeight) {
+                $maxWeight = $weight;
+                $maxSeverity = $severity;
+            }
+        }
+
+        return $maxSeverity;
+    }
+
+    /**
+     * Determine severity from reason string
      */
     protected function getSeverityFromReason(string $reason): string
     {
         $reasonLower = strtolower($reason);
 
-        if (Str::contains($reasonLower, ['sql', 'command', 'injection'])) {
+        if (Str::contains($reasonLower, ['sql', 'command', 'injection', 'serialization'])) {
             return 'critical';
         }
         if (Str::contains($reasonLower, ['xss', 'traversal', 'inclusion'])) {
             return 'high';
         }
-        if (Str::contains($reasonLower, ['behavior', 'threshold'])) {
+        if (Str::contains($reasonLower, ['behavior', 'threshold', 'brute'])) {
             return 'high';
         }
 
         return 'medium';
+    }
+
+    /**
+     * Internal logging helper — uses configured log channel if set
+     */
+    protected function log(string $level, string $message, array $context = []): void
+    {
+        $channel = $this->scenarios['log_channel'] ?? null;
+        $logger = $channel ? Log::channel($channel) : Log::getFacadeRoot();
+
+        $logger->{$level}("CrowdSec: {$message}", $context);
     }
 }

@@ -11,9 +11,9 @@ class CrowdSecCleanup extends Command
 {
     protected $signature = 'crowdsec:cleanup
                            {--dry-run : Show what would be deleted without actually deleting}
-                           {--expired : Clean up expired bans}
-                           {--old-events : Clean up old security events}
-                           {--old-behaviors : Clean up old behavior records}';
+                           {--expired : Clean up expired bans only}
+                           {--old-events : Clean up old security events only}
+                           {--old-behaviors : Clean up old behavior records only}';
 
     protected $description = 'Clean up expired bans, old events, and behavior records';
 
@@ -21,10 +21,16 @@ class CrowdSecCleanup extends Command
     {
         $dryRun = $this->option('dry-run');
 
-        // Default to true if option not specified, otherwise use the option value
-        $cleanupExpired = ! $this->hasOption('expired') || $this->option('expired');
-        $cleanupEvents = ! $this->hasOption('old-events') || $this->option('old-events');
-        $cleanupBehaviors = ! $this->hasOption('old-behaviors') || $this->option('old-behaviors');
+        // If any specific option is set, only run those. Otherwise, run all.
+        $anySpecific = $this->option('expired')
+            || $this->option('old-events')
+            || $this->option('old-behaviors');
+
+        $cleanupExpired = ! $anySpecific || $this->option('expired');
+        $cleanupEvents = ! $anySpecific || $this->option('old-events');
+        $cleanupBehaviors = ! $anySpecific || $this->option('old-behaviors');
+
+        $totalCleaned = 0;
 
         // Clean up expired bans
         if ($cleanupExpired) {
@@ -35,6 +41,7 @@ class CrowdSecCleanup extends Command
             } else {
                 $deleted = BlockedIp::expired()->update(['is_active' => false]);
                 $this->info("Cleaned up {$deleted} expired bans");
+                $totalCleaned += $deleted;
             }
         }
 
@@ -47,6 +54,7 @@ class CrowdSecCleanup extends Command
             } else {
                 $deleted = SecurityEvent::where('created_at', '<', now()->subDays(30))->delete();
                 $this->info("Deleted {$deleted} old security events");
+                $totalCleaned += $deleted;
             }
         }
 
@@ -59,11 +67,14 @@ class CrowdSecCleanup extends Command
             } else {
                 $deleted = IpBehavior::cleanup(30);
                 $this->info("Deleted {$deleted} old behavior records");
+                $totalCleaned += $deleted;
             }
         }
 
-        if (! $dryRun) {
-            $this->info('Cleanup completed successfully!');
+        if ($dryRun) {
+            $this->warn('No changes were made (dry run mode)');
+        } else {
+            $this->info("Cleanup completed successfully! Total records processed: {$totalCleaned}");
         }
 
         return Command::SUCCESS;

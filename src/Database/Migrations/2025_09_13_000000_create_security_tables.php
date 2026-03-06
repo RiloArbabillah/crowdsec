@@ -31,7 +31,7 @@ return new class extends Migration
         // Create blocked_ips table
         Schema::create('blocked_ips', function (Blueprint $table) {
             $table->id();
-            $table->string('ip', 45)->unique();
+            $table->string('ip', 45)->index();
             $table->text('reason')->nullable();
             $table->string('event_type', 255)->nullable();
             $table->timestamp('expires_at')->nullable();

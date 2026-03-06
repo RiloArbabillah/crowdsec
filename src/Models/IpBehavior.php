@@ -32,10 +32,6 @@ class IpBehavior extends Model
         'updated_at' => 'datetime',
     ];
 
-    public const THRESHOLD_REQUEST_COUNT = 1000; // per hour
-    public const THRESHOLD_ERROR_404_COUNT = 20; // per hour
-    public const THRESHOLD_LOGIN_ATTEMPTS = 10; // per 5 minutes
-    public const THRESHOLD_THREAT_SCORE = 50;
 
     public function scopeHighThreat($query, float $score = 50)
     {
@@ -77,12 +73,6 @@ class IpBehavior extends Model
         $this->update(['threat_score' => 0]);
     }
 
-    public function exceedsThresholds(): bool
-    {
-        return $this->request_count >= self::THRESHOLD_REQUEST_COUNT
-            || $this->error_404_count >= self::THRESHOLD_ERROR_404_COUNT
-            || $this->threat_score >= self::THRESHOLD_THREAT_SCORE;
-    }
 
     public static function getOrCreate(string $ip): self
     {
