@@ -26,6 +26,9 @@ class CrowdSecServiceProvider extends ServiceProvider
 
         // Register the facade
         $this->app->alias('crowdsec', CrowdSecService::class);
+
+        // Register GeoIP service
+        $this->app->singleton(\RiloArbabillah\LaravelCrowdSec\Services\GeoIpService::class);
     }
 
     /**

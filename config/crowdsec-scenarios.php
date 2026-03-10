@@ -469,4 +469,15 @@ return [
         '.git/config',
         '.well-known/security.txt',
     ],
+
+    // =========================================================================
+    // GEOIP
+    // =========================================================================
+
+    'geoip' => [
+        'enabled' => env('CROWDSEC_GEOIP_ENABLED', false),
+        'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ip-api'), // 'ip-api', 'custom'
+        'cache_ttl' => 86400, // Cache GeoIP results for 24 hours
+        'custom_callback' => null, // callable for custom provider
+    ],
 ];
