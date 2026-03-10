@@ -451,4 +451,22 @@ return [
         'rate_limit_minutes' => 5, // Max 1 notification per IP per N minutes
         'recipients' => explode(',', env('CROWDSEC_NOTIFY_RECIPIENTS', '')),
     ],
+
+    // =========================================================================
+    // HONEYPOT ROUTES
+    // =========================================================================
+
+    // Routes that serve as traps for malicious scanners.
+    // Any request to these routes will immediately block the IP.
+    'honeypot_routes' => [
+        '.env',
+        'wp-admin',
+        'wp-login.php',
+        'wp-includes',
+        'xmlrpc.php',
+        'phpmyadmin',
+        'administrator',
+        '.git/config',
+        '.well-known/security.txt',
+    ],
 ];

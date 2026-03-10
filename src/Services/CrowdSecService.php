@@ -37,6 +37,7 @@ class CrowdSecService
         'max_content_length', 'block_empty_ua', 'blocked_methods',
         'cache',
         'notifications',
+        'honeypot_routes',
     ];
 
     public function __construct()
