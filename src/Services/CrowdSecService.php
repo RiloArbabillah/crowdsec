@@ -45,6 +45,38 @@ class CrowdSecService
     }
 
     /**
+     * Register a custom detection scenario at runtime.
+     * Custom scenarios are merged with built-in config scenarios.
+     *
+     * Usage from service provider:
+     *   app('crowdsec')->registerScenario('api_abuse', [
+     *       'patterns' => ['/excessive-api-call-pattern/i'],
+     *       'severity' => 'high',
+     *       'weight' => 30,
+     *       'block_duration' => 720,
+     *   ]);
+     */
+    public function registerScenario(string $name, array $config): self
+    {
+        $this->scenarios[$name] = array_merge([
+            'patterns' => [],
+            'severity' => 'medium',
+            'weight' => 20,
+            'block_duration' => 240,
+        ], $config);
+
+        return $this;
+    }
+
+    /**
+     * Get all registered scenarios (built-in + custom).
+     */
+    public function getScenarios(): array
+    {
+        return array_diff_key($this->scenarios, array_flip(self::NON_SCENARIO_KEYS));
+    }
+
+    /**
      * Check if the package is enabled
      */
     public function isEnabled(): bool
