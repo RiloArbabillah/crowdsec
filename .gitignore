@@ -9,3 +9,4 @@ phpunit.xml.dist.bak
 .DS_Store
 /docs
 /.ai
+/.agents
