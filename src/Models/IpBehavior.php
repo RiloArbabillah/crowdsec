@@ -113,4 +113,57 @@ class IpBehavior extends Model
                 'login_attempts' => 0,
             ]);
     }
+
+    /**
+     * Apply threat score decay based on inactivity time.
+     * Reduces score gradually for IPs that have stopped suspicious activity.
+     *
+     * @param  float  $decayRate  Points to subtract per decay interval
+     * @param  int  $decayIntervalMinutes  Minutes of inactivity before decay applies
+     * @return bool Whether the score was actually decayed
+     */
+    public function decayThreatScore(float $decayRate = 5.0, int $decayIntervalMinutes = 60): bool
+    {
+        if ($this->threat_score <= 0) {
+            return false;
+        }
+
+        $minutesSinceLastActivity = $this->last_activity
+            ? now()->diffInMinutes($this->last_activity)
+            : 0;
+
+        if ($minutesSinceLastActivity < $decayIntervalMinutes) {
+            return false;
+        }
+
+        // Calculate number of decay intervals passed
+        $intervals = (int) floor($minutesSinceLastActivity / $decayIntervalMinutes);
+        $totalDecay = $decayRate * $intervals;
+
+        $newScore = max(0, $this->threat_score - $totalDecay);
+        $this->update(['threat_score' => $newScore]);
+
+        return true;
+    }
+
+    /**
+     * Apply decay to all behaviors that have been inactive.
+     *
+     * @return int Number of records decayed
+     */
+    public static function applyDecayAll(float $decayRate = 5.0, int $decayIntervalMinutes = 60): int
+    {
+        $decayed = 0;
+        $candidates = static::where('threat_score', '>', 0)
+            ->where('last_activity', '<', now()->subMinutes($decayIntervalMinutes))
+            ->get();
+
+        foreach ($candidates as $behavior) {
+            if ($behavior->decayThreatScore($decayRate, $decayIntervalMinutes)) {
+                $decayed++;
+            }
+        }
+
+        return $decayed;
+    }
 }
