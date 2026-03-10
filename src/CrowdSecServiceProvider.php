@@ -49,6 +49,19 @@ class CrowdSecServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
         }
 
+        // Load dashboard routes (if enabled)
+        if (config('crowdsec-scenarios.dashboard.enabled', false)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+        }
+
+        // Register views
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'crowdsec');
+
+        // Publish views
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/vendor/crowdsec'),
+        ], 'crowdsec-views');
+
         // Register commands
         if ($this->app->runningInConsole()) {
             $this->commands([
