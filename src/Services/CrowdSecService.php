@@ -6,6 +6,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use RiloArbabillah\LaravelCrowdSec\Events\IpBlocked;
+use RiloArbabillah\LaravelCrowdSec\Events\IpUnblocked;
+use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -445,6 +448,9 @@ class CrowdSecService
             'block_count' => ($behavior->block_count ?? 1),
         ]);
 
+        // Dispatch IpBlocked event
+        IpBlocked::dispatch($ip, $reason, $durationMinutes, $behavior->block_count ?? 1, $eventType);
+
         return $blockedIp;
     }
 
@@ -462,6 +468,9 @@ class CrowdSecService
             $this->invalidateBlockedCache($ip);
 
             $this->log('info', 'IP unblocked', ['ip' => $ip]);
+
+            // Dispatch IpUnblocked event
+            IpUnblocked::dispatch($ip);
 
             return true;
         }
