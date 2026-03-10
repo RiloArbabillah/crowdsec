@@ -73,6 +73,12 @@ class CrowdSecServiceProvider extends ServiceProvider
 
         // Register scheduled cleanup tasks (Laravel 11+ style)
         $this->registerScheduledCleanup();
+
+        // Register event listeners for notifications
+        Event::listen(
+            \RiloArbabillah\LaravelCrowdSec\Events\IpBlocked::class,
+            \RiloArbabillah\LaravelCrowdSec\Listeners\SendSecurityAlert::class
+        );
     }
 
     /**
