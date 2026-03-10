@@ -1,5 +1,6 @@
 # Laravel CrowdSec
 
+[![Tests](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml/badge.svg)](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/packagist/php-v/rilo-arbabillah/laravel-crowdsec.svg)](https://packagist.org/packages/rilo-arbabillah/laravel-crowdsec)
 [![Laravel Version](https://img.shields.io/packagist/dependency-v/rilo-arbabillah/laravel-crowdsec/laravel.svg)](https://laravel.com)
 [![License](https://img.shields.io/packagist/license/rilo-arbabillah/laravel-crowdsec.svg)](LICENSE)
@@ -248,6 +249,7 @@ php artisan crowdsec:stats
 ```
 
 Output includes:
+
 - Active blocked IPs
 - Expired blocked IPs
 - Events today
@@ -309,11 +311,11 @@ protected function schedule(Schedule $schedule)
 
 The package creates three tables automatically via migrations:
 
-| Table | Description |
-|-------|-------------|
-| `blocked_ips` | Tracks blocked IPs with expiration and reason |
-| `ip_behaviors` | Tracks per-IP metrics (request count, 404s, login attempts, threat score) |
-| `security_events` | Logs all detected security threats |
+| Table             | Description                                                               |
+| ----------------- | ------------------------------------------------------------------------- |
+| `blocked_ips`     | Tracks blocked IPs with expiration and reason                             |
+| `ip_behaviors`    | Tracks per-IP metrics (request count, 404s, login attempts, threat score) |
+| `security_events` | Logs all detected security threats                                        |
 
 Tables are created when you run:
 
@@ -325,18 +327,18 @@ php artisan migrate
 
 The package detects the following attack types:
 
-| Threat Type | Severity | Examples |
-|-------------|----------|----------|
-| SQL Injection | Critical | `UNION SELECT`, `OR 1=1`, `xp_cmdshell` |
-| XSS | High | `<script>`, `javascript:`, `onclick=` |
-| Path Traversal | Critical | `../`, `%2e%2e%2f` |
-| Command Injection | Critical | `;cat`, `\|whoami`, `` `id` `` |
-| File Inclusion | High | `php://input`, `data:text/html` |
-| PHP Serialization | Critical | `O:16:"MaliciousClass"` |
-| Directory Bruteforce | Medium | `.git/config`, `.env`, `wp-admin` |
-| Header Injection | High | CRLF injection, `Location:` |
-| Suspicious User Agent | Medium | `sqlmap`, `nmap`, `python-requests` |
-| Behavior Threshold | High | Rate limiting, brute-force |
+| Threat Type           | Severity | Examples                                |
+| --------------------- | -------- | --------------------------------------- |
+| SQL Injection         | Critical | `UNION SELECT`, `OR 1=1`, `xp_cmdshell` |
+| XSS                   | High     | `<script>`, `javascript:`, `onclick=`   |
+| Path Traversal        | Critical | `../`, `%2e%2e%2f`                      |
+| Command Injection     | Critical | `;cat`, `\|whoami`, `` `id` ``          |
+| File Inclusion        | High     | `php://input`, `data:text/html`         |
+| PHP Serialization     | Critical | `O:16:"MaliciousClass"`                 |
+| Directory Bruteforce  | Medium   | `.git/config`, `.env`, `wp-admin`       |
+| Header Injection      | High     | CRLF injection, `Location:`             |
+| Suspicious User Agent | Medium   | `sqlmap`, `nmap`, `python-requests`     |
+| Behavior Threshold    | High     | Rate limiting, brute-force              |
 
 ## Production Guidelines
 
