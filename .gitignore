@@ -7,6 +7,5 @@ phpunit.xml.dist.bak
 *.swp
 *.swo
 .DS_Store
-/docs
 /.ai
 /.agents

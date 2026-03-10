@@ -1,0 +1,529 @@
+# 📋 Product Requirements Document (PRD)
+
+## Laravel CrowdSec — Lightweight WAF Protection for Laravel
+
+| Field            | Value                              |
+| ---------------- | ---------------------------------- |
+| **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
+| **Version**      | 1.0.0-beta                         |
+| **Author**       | Rilo Arbabillah                    |
+| **License**      | MIT                                |
+| **Last Updated** | 2026-03-11                         |
+
+---
+
+## 1. Problem Statement
+
+Aplikasi Laravel rentan terhadap serangan web yang umum seperti **SQL Injection, XSS, Path Traversal, Command Injection**, dan lainnya. Solusi WAF (Web Application Firewall) yang tersedia saat ini umumnya:
+
+- **Berat dan mahal** (Cloudflare Pro, AWS WAF, CrowdSec full deployment)
+- **Memerlukan infrastruktur tambahan** (reverse proxy, agent terpisah)
+- **Sulit dikonfigurasi** untuk developer Laravel biasa
+- **Tidak terintegrasi** langsung dengan ekosistem Laravel
+
+> [!IMPORTANT]
+> **Kebutuhan inti**: Sebuah package Laravel yang **ringan, plug-and-play**, dan menyediakan proteksi WAF tingkat aplikasi tanpa memerlukan infrastruktur eksternal.
+
+---
+
+## 2. Goals & Success Metrics
+
+### Goals
+
+1. Menyediakan proteksi WAF **langsung di level aplikasi** Laravel
+2. **Zero-config setup** — install, migrate, dan langsung aktif
+3. Deteksi **12+ jenis serangan** web secara real-time
+4. IP blocking otomatis dengan **progressive escalation**
+5. **Tidak mengganggu performa** — fail-open design
+
+### Success Metrics
+
+| Metric                                       | Target    |
+| -------------------------------------------- | --------- |
+| Installation time (composer install → aktif) | < 5 menit |
+| False positive rate pada traffic normal      | < 0.1%    |
+| Latency overhead per request                 | < 5ms     |
+| Attack detection coverage (OWASP Top 10)     | ≥ 80%     |
+| Test coverage (unit test)                    | ≥ 85%     |
+| Package downloads (6 bulan pertama)          | ≥ 500     |
+
+---
+
+## 3. Target Users
+
+| Persona               | Deskripsi                                                |
+| --------------------- | -------------------------------------------------------- |
+| **Laravel Developer** | Developer yang butuh basic WAF tanpa setup infrastruktur |
+| **Startup/SMB**       | Tim kecil tanpa dedicated security engineer              |
+| **SysAdmin**          | Admin yang butuh monitoring ancaman di level aplikasi    |
+| **Enterprise**        | Sebagai layer tambahan di samping WAF infrastruktur      |
+
+---
+
+## 4. User Stories
+
+### Core Protection
+
+- Sebagai **developer**, saya ingin package yang bisa diinstall via Composer dan langsung aktif, sehingga saya tidak perlu konfigurasi rumit.
+- Sebagai **developer**, saya ingin request berbahaya otomatis di-block, sehingga aplikasi saya terlindungi tanpa perlu menulis kode custom.
+- Sebagai **developer**, saya ingin bisa whitelist IP tertentu (localhost, internal network), sehingga development dan internal service tidak terganggu.
+
+### Monitoring & Visibility
+
+- Sebagai **sysadmin**, saya ingin melihat statistik serangan via CLI, sehingga saya bisa monitor kondisi keamanan aplikasi.
+- Sebagai **sysadmin**, saya ingin semua security event tercatat di database, sehingga saya bisa analisis dan audit.
+
+### Programmatic Control
+
+- Sebagai **developer**, saya ingin bisa block/unblock IP secara programmatic via Facade, sehingga saya bisa integrasikan dengan logika bisnis.
+- Sebagai **developer**, saya ingin bisa track login attempt untuk proteksi brute-force, sehingga halaman login lebih aman.
+
+### Configuration
+
+- Sebagai **developer**, saya ingin bisa tune threshold dan pattern via config file, sehingga proteksi bisa disesuaikan dengan kebutuhan aplikasi.
+- Sebagai **developer**, saya ingin bisa enable/disable package via env variable, sehingga proteksi bisa dimatikan saat development.
+
+---
+
+## 5. Scope
+
+### ✅ In Scope (v1.0)
+
+| Feature                                        | Status         |
+| ---------------------------------------------- | -------------- |
+| WAF pattern detection (12 attack types)        | ✅ Implemented |
+| IP blocking dengan expiration                  | ✅ Implemented |
+| Progressive escalation (repeated offenders)    | ✅ Implemented |
+| Behavior tracking (request rate, 404, login)   | ✅ Implemented |
+| Security event logging ke database             | ✅ Implemented |
+| CLI: `crowdsec:stats`                          | ✅ Implemented |
+| CLI: `crowdsec:cleanup`                        | ✅ Implemented |
+| Facade API (`CrowdSec::blockIp()`, etc.)       | ✅ Implemented |
+| Multi-layer decoding (double URL, HTML entity) | ✅ Implemented |
+| IP whitelist + CIDR support                    | ✅ Implemented |
+| Login route detection & brute-force guard      | ✅ Implemented |
+| Configurable via published config file         | ✅ Implemented |
+| Enable/disable via env variable                | ✅ Implemented |
+| Auto-migration                                 | ✅ Implemented |
+
+### ✅ Added in v1.0-beta
+
+| Feature                                        | Status         |
+| ---------------------------------------------- | -------------- |
+| Caching layer for blocked IPs                  | ✅ Implemented |
+| Event/Listener system (4 events)               | ✅ Implemented |
+| Notification support (email, Slack)            | ✅ Implemented |
+| IP threat score decay                          | ✅ Implemented |
+| Scheduled cleanup auto-registration            | ✅ Implemented |
+| Custom pattern plugin system                   | ✅ Implemented |
+| Honeypot route trap middleware                 | ✅ Implemented |
+| Per-route rate limiting middleware             | ✅ Implemented |
+| SIEM-compatible event export (JSON/CSV/Syslog) | ✅ Implemented |
+| GeoIP lookup service (ip-api.com)              | ✅ Implemented |
+| REST API endpoints (6 endpoints)               | ✅ Implemented |
+| Admin security dashboard (Blade)               | ✅ Implemented |
+| GitHub Actions CI pipeline                     | ✅ Implemented |
+| Integration tests (22 tests)                   | ✅ Implemented |
+| Edge case tests (20 tests)                     | ✅ Implemented |
+| Performance benchmarks (8 tests)               | ✅ Implemented |
+
+### ❌ Out of Scope (v1.0)
+
+| Feature                       | Alasan                      |
+| ----------------------------- | --------------------------- |
+| Distributed blocklist sharing | Memerlukan infra eksternal  |
+| Bot detection (CAPTCHA)       | Terpisah, bukan WAF concern |
+| Laravel 9 support             | EOL, PHP 8.1+ only          |
+| CrowdSec API integration      | Separate ecosystem          |
+
+---
+
+## 6. Functional Requirements
+
+### FR-01: WAF Pattern Detection
+
+Package harus mendeteksi serangan berikut melalui regex pattern matching:
+
+| #   | Attack Type                   | Severity | Block Duration |
+| --- | ----------------------------- | -------- | -------------- |
+| 1   | SQL Injection                 | Critical | 24 jam         |
+| 2   | XSS (Cross-Site Scripting)    | High     | 12 jam         |
+| 3   | Path Traversal                | Critical | 24 jam         |
+| 4   | Command Injection             | Critical | 24 jam         |
+| 5   | File Inclusion (PHP wrappers) | High     | 12 jam         |
+| 6   | PHP Serialization Attack      | Critical | 24 jam         |
+| 7   | Directory Bruteforce          | Medium   | 6 jam          |
+| 8   | Header Injection (CRLF)       | High     | 8 jam          |
+| 9   | Suspicious User Agent         | Medium   | 1 jam          |
+| 10  | SSRF                          | Critical | 24 jam         |
+| 11  | XXE                           | Critical | 24 jam         |
+| 12  | NoSQL Injection               | Critical | 24 jam         |
+| 13  | LDAP Injection                | High     | 12 jam         |
+| 14  | SSTI                          | Critical | 24 jam         |
+| 15  | Open Redirect                 | Medium   | 4 jam          |
+
+### FR-02: Multi-Layer Decoding
+
+Setiap input harus di-decode dalam multiple layer sebelum pattern matching:
+
+- URL decode (single & double)
+- HTML entity decode
+
+### FR-03: Request Processing Pipeline
+
+Middleware harus memproses request dalam urutan berikut:
+
+```
+1. Check enabled → 2. Check whitelist → 3. Check blocked
+→ 4. Check HTTP method → 5. Check empty UA → 6. Check body size
+→ 7. Check login route → 8. WAF patterns → 9. Track behavior
+→ 10. Check behavior threshold → Process request → Track 404
+```
+
+### FR-04: IP Blocking
+
+- Block IP berdasarkan detected threats (severity medium+)
+- Block IP berdasarkan behavior threshold
+- Progressive escalation: durasi 2x lipat setiap re-offense (max 7 hari)
+- Block expiration otomatis
+
+### FR-05: Behavior Tracking
+
+Per-IP tracking meliputi:
+
+- Request count per jam (threshold: 500)
+- Error 404 count per jam (threshold: 15)
+- Login attempts per 5 menit (threshold: 5)
+- Cumulative threat score (threshold: 50)
+
+### FR-06: Security Event Logging
+
+Setiap threat yang terdeteksi harus di-log dengan:
+
+- IP address, event type, severity
+- Request data (method, path, query, user agent, referer)
+- Matched patterns
+
+### FR-07: CLI Commands
+
+- `crowdsec:stats` — menampilkan statistik proteksi (active blocks, events, top attackers)
+- `crowdsec:cleanup` — membersihkan expired bans + old events/behaviors
+- `crowdsec:export` — export events ke SIEM (JSON, CSV, Syslog RFC 5424)
+
+### FR-09: Event/Listener System
+
+4 Laravel events yang di-dispatch otomatis:
+
+- `ThreatDetected` — IP, threats, severity, URI, method, request
+- `IpBlocked` — IP, reason, duration, block count, event type
+- `IpUnblocked` — IP
+- `BehaviorThresholdExceeded` — IP, threat score, request count, 404 count, login attempts
+
+### FR-10: Notification Support
+
+- `SecurityAlertNotification` (mail, Slack, array) — ShouldQueue
+- `SendSecurityAlert` listener — severity filtering + rate limiting
+- Configurable: channels, severity threshold, rate limit, recipients
+
+### FR-11: Honeypot Routes
+
+- `HoneypotTrap` middleware — block immediate saat akses trap routes
+- Default routes: `.env`, `wp-admin`, `wp-login.php`, `phpmyadmin`, `.git/config`
+
+### FR-12: Per-Route Rate Limiting
+
+- `CrowdSecRateLimit` middleware — `crowdsec.rate:60,1` (60 req per 1 min)
+- Returns 429 + `Retry-After` + `X-RateLimit-*` headers
+
+### FR-13: Custom Pattern Plugin
+
+- `registerScenario(name, config)` — runtime registration
+- Merge with built-in patterns (not replace)
+
+### FR-14: GeoIP Lookup
+
+- `GeoIpService` — ip-api.com provider, 24h cache, custom callback
+
+### FR-15: REST API
+
+6 endpoints: stats, events, blocked, block, unblock, check
+
+- Disabled by default, configurable middleware
+
+### FR-16: Admin Dashboard
+
+- Standalone Blade dashboard (dark theme, no external deps)
+- Stats cards, events table, blocked IPs, top attackers, threat breakdown
+
+### FR-08: Facade API
+
+Public API melalui `CrowdSec` facade:
+
+- `isBlocked(ip)`, `blockIp(ip, reason, duration)`, `unblockIp(ip)`
+- `analyzeRequest(request)`, `trackLoginAttempt(ip)`
+
+---
+
+## 7. Non-Functional Requirements
+
+| Aspect              | Requirement                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| **Performance**     | Middleware overhead < 5ms per request                              |
+| **Reliability**     | Fail-open — WAF error TIDAK boleh crash aplikasi                   |
+| **Compatibility**   | Laravel 10.x & 11.x, PHP 8.1+                                      |
+| **Database**        | MySQL, PostgreSQL, SQLite (semua yang didukung Laravel)            |
+| **Security**        | Patterns harus tahan terhadap encoding bypass                      |
+| **Maintainability** | Configurable patterns — bisa ditambah tanpa ubah kode              |
+| **Testing**         | Unit test untuk semua attack detection + false positive prevention |
+
+---
+
+## 8. Architecture
+
+### Data Model
+
+```mermaid
+erDiagram
+    blocked_ips {
+        bigint id PK
+        varchar ip
+        text reason
+        varchar event_type
+        timestamp expires_at
+        boolean is_active
+        bigint created_by FK
+        timestamps created_at
+    }
+
+    ip_behaviors {
+        bigint id PK
+        varchar ip UK
+        int request_count
+        int error_404_count
+        int login_attempts
+        decimal threat_score
+        int block_count
+        timestamp first_activity
+        timestamp last_activity
+        timestamps created_at
+    }
+
+    security_events {
+        bigint id PK
+        varchar ip
+        varchar event_type
+        varchar severity
+        json request_data
+        varchar user_agent
+        varchar request_path
+        json matched_patterns
+        bigint blocked_ip_id FK
+        timestamps created_at
+    }
+
+    blocked_ips ||--o{ security_events : "has many"
+```
+
+### Request Flow
+
+```mermaid
+flowchart TD
+    A[Incoming Request] --> B{Package Enabled?}
+    B -->|No| Z[Pass Through]
+    B -->|Yes| C{IP Whitelisted?}
+    C -->|Yes| Z
+    C -->|No| D{IP Blocked?}
+    D -->|Yes| X[403 Forbidden]
+    D -->|No| E{Blocked Method?}
+    E -->|Yes| F[Block IP + 403]
+    E -->|No| G{Empty UA?}
+    G -->|Yes| H[Add Threat Score]
+    G -->|No| I{Oversized Body?}
+    H --> I
+    I -->|Yes| X
+    I -->|No| J{Login Route?}
+    J -->|Yes| K{Login Threshold?}
+    K -->|Yes| F
+    K -->|No| Z
+    J -->|No| L[WAF Pattern Check]
+    L --> M{Threats Found?}
+    M -->|Yes, Blocking| N[Log + Block IP + 403]
+    M -->|Yes, Low| O[Log + Score]
+    M -->|No| P[Track Behavior]
+    O --> P
+    P --> Q{Behavior Threshold?}
+    Q -->|Yes| F
+    Q -->|No| R[Process Request]
+    R --> S{Response 404?}
+    S -->|Yes| T[Track 404]
+    S -->|No| U[Return Response]
+    T --> U
+```
+
+### Package Structure
+
+```
+src/
+├── Console/Commands/
+│   ├── CrowdSecCleanup.php        # Artisan cleanup command
+│   ├── CrowdSecExport.php         # SIEM export (JSON/CSV/Syslog)
+│   └── CrowdSecStats.php          # Artisan stats command
+├── Database/Migrations/
+│   └── create_security_tables      # Auto-migration (3 tables)
+├── Events/
+│   ├── BehaviorThresholdExceeded.php
+│   ├── IpBlocked.php
+│   ├── IpUnblocked.php
+│   └── ThreatDetected.php
+├── Facades/
+│   └── CrowdSec.php               # Facade for CrowdSecService
+├── Http/
+│   ├── Controllers/
+│   │   ├── CrowdSecApiController.php       # REST API (6 endpoints)
+│   │   └── CrowdSecDashboardController.php # Admin dashboard
+│   └── Middleware/
+│       ├── CrowdSecProtection.php   # Main middleware (10-step pipeline)
+│       ├── CrowdSecRateLimit.php    # Per-route rate limiting
+│       └── HoneypotTrap.php         # Honeypot route trap
+├── Listeners/
+│   └── SendSecurityAlert.php       # Notification on IpBlocked
+├── Models/
+│   ├── BlockedIp.php               # Blocked IP model with scopes
+│   ├── IpBehavior.php              # Per-IP behavior tracking + decay
+│   └── SecurityEvent.php           # Security event log
+├── Notifications/
+│   └── SecurityAlertNotification.php # Mail/Slack notification
+├── Services/
+│   ├── CrowdSecService.php         # Core engine (~700 lines)
+│   └── GeoIpService.php            # GeoIP lookup service
+└── CrowdSecServiceProvider.php     # Auto-discovery provider
+resources/views/
+└── dashboard.blade.php             # Admin dashboard (dark theme)
+routes/
+├── api.php                         # REST API routes
+└── web.php                         # Dashboard routes
+```
+
+---
+
+## 9. Dependencies & Risks
+
+### Dependencies
+
+| Dependency                 | Type    | Notes                   |
+| -------------------------- | ------- | ----------------------- |
+| `illuminate/*` (10.x/11.x) | Runtime | Core Laravel components |
+| `orchestra/testbench`      | Dev     | Testing framework       |
+| `phpunit/phpunit`          | Dev     | Test runner             |
+| Database (any)             | Runtime | Untuk 3 tabel security  |
+
+### Risks
+
+| Risk                                   | Impact                 | Probability | Mitigation                                    |
+| -------------------------------------- | ---------------------- | ----------- | --------------------------------------------- |
+| False positive pada traffic legitimate | User di-block salahnya | Medium      | False positive test suite, tunable patterns   |
+| Performance degradation (high traffic) | Latency naik           | Low         | Whitelist check first, fail-open design       |
+| Regex ReDoS attack                     | CPU spike              | Low         | Pattern review, timeout protection            |
+| Database table bloat                   | Storage full           | Medium      | Auto-cleanup command, scheduled cleanup       |
+| Pattern bypass via unknown encoding    | Serangan lolos         | Medium      | Multi-layer decoding, regular pattern updates |
+
+---
+
+## 10. Timeline & Milestones
+
+### Phase 1: v1.0.0-alpha → v1.0.0-beta ✅ COMPLETED
+
+| Task                                  | Priority    | Status  |
+| ------------------------------------- | ----------- | ------- |
+| Core WAF detection (15 patterns)      | Must Have   | ✅ Done |
+| IP blocking + progressive escalation  | Must Have   | ✅ Done |
+| Behavior tracking                     | Must Have   | ✅ Done |
+| CLI commands (stats, cleanup, export) | Must Have   | ✅ Done |
+| Facade API                            | Must Have   | ✅ Done |
+| Multi-encoding detection              | Must Have   | ✅ Done |
+| Unit tests (27 test cases)            | Must Have   | ✅ Done |
+| Integration tests (22 tests)          | Should Have | ✅ Done |
+| Edge case tests (20 tests)            | Should Have | ✅ Done |
+| Performance benchmarking (8 tests)    | Should Have | ✅ Done |
+| GitHub Actions CI pipeline            | Should Have | ✅ Done |
+| Documentation (README, PRD, PROGRESS) | Must Have   | ✅ Done |
+
+### Phase 2: v1.0.0-beta → v1.0.0 (Stable) ✅ COMPLETED
+
+| Task                                | Priority    | Status   |
+| ----------------------------------- | ----------- | -------- |
+| Caching layer for blocked IPs       | Must Have   | ✅ Done  |
+| Event/Listener system (4 events)    | Must Have   | ✅ Done  |
+| Notification support (email, Slack) | Should Have | ✅ Done  |
+| IP threat score decay               | Should Have | ✅ Done  |
+| Scheduled cleanup registration      | Should Have | ✅ Done  |
+| Custom pattern plugin system        | Should Have | ✅ Done  |
+| Honeypot route traps                | Could Have  | ✅ Done  |
+| Per-route rate limiting             | Could Have  | ✅ Done  |
+| Packagist release                   | Must Have   | ⬜ To Do |
+
+### Phase 3: v1.1.0+ ✅ COMPLETED
+
+| Task                               | Priority   | Status    |
+| ---------------------------------- | ---------- | --------- |
+| Admin dashboard (standalone Blade) | Could Have | ✅ Done   |
+| SIEM export (JSON, CSV, Syslog)    | Could Have | ✅ Done   |
+| GeoIP lookup service               | Could Have | ✅ Done   |
+| REST API (6 endpoints)             | Could Have | ✅ Done   |
+| Distributed blocklist sharing      | Won't Have | ⬜ Future |
+
+---
+
+## 11. Acceptance Criteria
+
+### ✅ Pattern Detection
+
+- [x] Detects SQL Injection (UNION SELECT, OR 1=1, stacked queries)
+- [x] Detects XSS (`<script>`, `javascript:`, event handlers)
+- [x] Detects Path Traversal (`../`, encoded variants)
+- [x] Detects Command Injection (`;cat`, backtick, `$()`)
+- [x] Detects SSRF (AWS metadata, localhost, file://)
+- [x] Detects XXE (`<!ENTITY`, `<!DOCTYPE SYSTEM`)
+- [x] Detects NoSQL Injection (`$ne`, `$gt`, MongoDB operators)
+- [x] Detects SSTI (`{{7*7}}`, `__class__`)
+- [x] Detects Open Redirect (redirect params with external URL)
+- [x] Detects double-encoded attacks
+
+### ✅ False Positive Prevention
+
+- [x] Normal text queries do NOT trigger detection
+- [x] Apostrophes in text do NOT trigger SQLi
+- [x] `data:image/*` do NOT trigger XSS
+- [x] Standard HTML attributes do NOT trigger XSS
+
+### ✅ IP Blocking
+
+- [x] IP ter-block setelah threat detected (severity medium+)
+- [x] Block duration sesuai severity (1h → 24h)
+- [x] Progressive escalation (2x per re-offense, max 7 hari)
+- [x] Block otomatis expire
+
+### ✅ Behavior Tracking
+
+- [x] Request count tracked per IP
+- [x] 404 errors tracked per IP
+- [x] Login attempts tracked per IP
+- [x] Cumulative threat score calculated
+
+### ✅ Reliability
+
+- [x] WAF error does NOT crash application (fail-open)
+- [x] Package can be disabled via config
+- [x] Whitelisted IPs bypass all checks
+
+---
+
+## 12. Open Questions
+
+| #   | Question                                                    | Status                                 |
+| --- | ----------------------------------------------------------- | -------------------------------------- |
+| 1   | Apakah perlu support Laravel 9?                             | ❌ Decided: No (EOL)                   |
+| 2   | Apakah perlu caching layer untuk blocked IPs?               | ✅ Resolved: Implemented (PR #22)      |
+| 3   | Format notification (email/Slack) untuk v1.1?               | ✅ Resolved: Mail + Slack (PR #26)     |
+| 4   | Apakah perlu integrate dengan CrowdSec API (real CrowdSec)? | 🟡 Open — future consideration         |
+| 5   | Dashboard: Filament plugin atau standalone?                 | ✅ Resolved: Standalone Blade (PR #33) |
