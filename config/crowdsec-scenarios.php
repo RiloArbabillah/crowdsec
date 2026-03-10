@@ -427,4 +427,16 @@ return [
         'filament/auth/login',
         'filament/login',
     ],
+
+    // =========================================================================
+    // CACHING
+    // =========================================================================
+
+    // Cache blocked IP lookups for performance (recommended for high-traffic sites)
+    'cache' => [
+        'enabled' => env('CROWDSEC_CACHE_ENABLED', false),
+        'store' => env('CROWDSEC_CACHE_STORE', null), // null = default cache store
+        'ttl' => env('CROWDSEC_CACHE_TTL', 60), // seconds
+        'prefix' => 'crowdsec',
+    ],
 ];

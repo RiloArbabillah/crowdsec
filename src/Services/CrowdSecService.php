@@ -3,6 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec\Services;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
@@ -31,6 +32,7 @@ class CrowdSecService
         'behavior', 'defaults', 'whitelist_ips', 'login_routes',
         'enabled', 'blocked_response_message', 'log_channel',
         'max_content_length', 'block_empty_ua', 'blocked_methods',
+        'cache',
     ];
 
     public function __construct()
@@ -47,11 +49,20 @@ class CrowdSecService
     }
 
     /**
-     * Check if an IP is currently blocked
+     * Check if an IP is currently blocked (with caching)
      */
     public function isBlocked(string $ip): bool
     {
-        return BlockedIp::isBlocked($ip);
+        if (! $this->isCacheEnabled()) {
+            return BlockedIp::isBlocked($ip);
+        }
+
+        $cacheKey = $this->getBlockedCacheKey($ip);
+        $cacheTtl = $this->scenarios['cache']['ttl'] ?? 60; // seconds
+
+        return $this->cacheStore()->remember($cacheKey, $cacheTtl, function () use ($ip) {
+            return BlockedIp::isBlocked($ip);
+        });
     }
 
     /**
@@ -424,6 +435,9 @@ class CrowdSecService
             ]
         );
 
+        // Invalidate cache so blocked status is reflected immediately
+        $this->invalidateBlockedCache($ip);
+
         $this->log('warning', 'IP blocked', [
             'ip' => $ip,
             'reason' => $reason,
@@ -444,6 +458,9 @@ class CrowdSecService
             ->update(['is_active' => false]);
 
         if ($count > 0) {
+            // Invalidate cache so unblocked status is reflected immediately
+            $this->invalidateBlockedCache($ip);
+
             $this->log('info', 'IP unblocked', ['ip' => $ip]);
 
             return true;
@@ -573,5 +590,47 @@ class CrowdSecService
         $logger = $channel ? Log::channel($channel) : Log::getFacadeRoot();
 
         $logger->{$level}("CrowdSec: {$message}", $context);
+    }
+
+    // =========================================================================
+    // Cache helpers
+    // =========================================================================
+
+    /**
+     * Check if caching is enabled
+     */
+    protected function isCacheEnabled(): bool
+    {
+        return (bool) ($this->scenarios['cache']['enabled'] ?? false);
+    }
+
+    /**
+     * Get the cache store instance
+     */
+    protected function cacheStore(): \Illuminate\Contracts\Cache\Repository
+    {
+        $store = $this->scenarios['cache']['store'] ?? null;
+
+        return $store ? Cache::store($store) : Cache::store();
+    }
+
+    /**
+     * Get cache key for blocked IP check
+     */
+    protected function getBlockedCacheKey(string $ip): string
+    {
+        $prefix = $this->scenarios['cache']['prefix'] ?? 'crowdsec';
+
+        return "{$prefix}:blocked:{$ip}";
+    }
+
+    /**
+     * Invalidate cached blocked status for an IP
+     */
+    public function invalidateBlockedCache(string $ip): void
+    {
+        if ($this->isCacheEnabled()) {
+            $this->cacheStore()->forget($this->getBlockedCacheKey($ip));
+        }
     }
 }
