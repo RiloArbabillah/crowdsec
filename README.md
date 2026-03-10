@@ -413,6 +413,30 @@ protected function schedule(Schedule $schedule)
 - Behavior tracking uses efficient increment operations
 - Consider caching blocked IPs for very high-traffic sites
 
+### Performance Benchmarks
+
+The package includes a benchmark suite (`tests/Benchmark`) to verify overhead stays minimal.
+
+Run benchmarks:
+
+```bash
+vendor/bin/phpunit tests/Benchmark --testdox
+```
+
+Typical results (100 iterations average):
+
+| Operation               | Avg Time | Target     |
+| ----------------------- | -------- | ---------- |
+| Whitelist bypass        | ~0.006ms | < 0.5ms ✅ |
+| Clean request analysis  | ~0.038ms | < 2ms ✅   |
+| Blocked IP check        | ~0.045ms | < 2ms ✅   |
+| Threat detection (SQLi) | ~0.047ms | < 5ms ✅   |
+| Multi-threat detection  | ~0.051ms | < 5ms ✅   |
+| POST body analysis      | ~0.159ms | < 3ms ✅   |
+| Behavior tracking       | ~0.163ms | < 3ms ✅   |
+
+> **Note:** Results may vary depending on hardware. Benchmarks use SQLite in-memory.
+
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
