@@ -46,6 +46,7 @@ class CrowdSecServiceProvider extends ServiceProvider
             $this->commands([
                 CrowdSecCleanup::class,
                 CrowdSecStats::class,
+                \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecExport::class,
             ]);
         }
 
