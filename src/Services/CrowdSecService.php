@@ -38,6 +38,7 @@ class CrowdSecService
         'cache',
         'notifications',
         'honeypot_routes',
+        'geoip',
     ];
 
     public function __construct()
