@@ -3,6 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec;
 
 use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
@@ -68,6 +69,37 @@ class CrowdSecServiceProvider extends ServiceProvider
                     'threat_score' => 0,
                 ]);
             }
+        });
+
+        // Register scheduled cleanup tasks (Laravel 11+ style)
+        $this->registerScheduledCleanup();
+    }
+
+    /**
+     * Register scheduled cleanup tasks.
+     * Uses callAfterResolving for Laravel 11+ auto-registration.
+     * For Laravel 10, users should add to app/Console/Kernel.php:
+     *   $schedule->command('crowdsec:cleanup --expired')->daily();
+     *   $schedule->command('crowdsec:cleanup --old-events')->weekly();
+     *   $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+     */
+    protected function registerScheduledCleanup(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            // Clean up expired bans daily
+            $schedule->command('crowdsec:cleanup --expired')
+                ->daily()
+                ->description('CrowdSec: cleanup expired bans');
+
+            // Clean up old events weekly
+            $schedule->command('crowdsec:cleanup --old-events')
+                ->weekly()
+                ->description('CrowdSec: cleanup old security events');
+
+            // Clean up old behavior records weekly
+            $schedule->command('crowdsec:cleanup --old-behaviors')
+                ->weekly()
+                ->description('CrowdSec: cleanup old behavior records');
         });
     }
 }
