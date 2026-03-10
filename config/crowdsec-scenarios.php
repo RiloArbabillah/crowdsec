@@ -439,4 +439,16 @@ return [
         'ttl' => env('CROWDSEC_CACHE_TTL', 60), // seconds
         'prefix' => 'crowdsec',
     ],
+
+    // =========================================================================
+    // NOTIFICATIONS
+    // =========================================================================
+
+    'notifications' => [
+        'enabled' => env('CROWDSEC_NOTIFY_ENABLED', false),
+        'channels' => ['mail'], // Supported: 'mail', 'slack'
+        'severity_threshold' => 'high', // Only notify for this severity and above
+        'rate_limit_minutes' => 5, // Max 1 notification per IP per N minutes
+        'recipients' => explode(',', env('CROWDSEC_NOTIFY_RECIPIENTS', '')),
+    ],
 ];

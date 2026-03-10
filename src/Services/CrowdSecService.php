@@ -36,6 +36,7 @@ class CrowdSecService
         'enabled', 'blocked_response_message', 'log_channel',
         'max_content_length', 'block_empty_ua', 'blocked_methods',
         'cache',
+        'notifications',
     ];
 
     public function __construct()
