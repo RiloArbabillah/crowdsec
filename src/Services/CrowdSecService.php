@@ -24,6 +24,15 @@ class CrowdSecService
         'critical' => 4,
     ];
 
+    /**
+     * Config keys that are NOT pattern-based scenarios.
+     */
+    protected const NON_SCENARIO_KEYS = [
+        'behavior', 'defaults', 'whitelist_ips', 'login_routes',
+        'enabled', 'blocked_response_message', 'log_channel',
+        'max_content_length', 'block_empty_ua', 'blocked_methods',
+    ];
+
     public function __construct()
     {
         $this->scenarios = config('crowdsec-scenarios', []);
@@ -55,37 +64,47 @@ class CrowdSecService
     }
 
     /**
-     * Check request against WAF patterns
+     * Check request against WAF patterns with multi-layer decoding
      */
     public function checkWafPatterns(Request $request): array
     {
         $threats = [];
         $inputsToCheck = [];
 
-        // Collect all inputs to check (URL decode to detect encoded attacks)
-        $inputsToCheck['query'] = urldecode($request->getQueryString() ?? '');
+        // Collect all inputs to check
+        $inputsToCheck['query'] = $request->getQueryString() ?? '';
         $inputsToCheck['path'] = $request->path();
 
-        // Check POST data (skip for login requests — handled separately)
-        if ($request->isMethod('POST')) {
-            $postData = $this->extractPostData($request);
-            foreach ($postData as $key => $value) {
-                $inputsToCheck[$key] = is_string($value) ? urldecode($value) : $value;
+        // Check body data for all mutating methods (not just POST)
+        if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
+            $bodyData = $this->extractBodyData($request);
+            foreach ($bodyData as $key => $value) {
+                $inputsToCheck["body_{$key}"] = is_string($value) ? $value : '';
             }
         }
 
-        // Check headers (only specific headers, not body)
+        // Check headers
         $inputsToCheck['user_agent'] = $request->userAgent() ?? '';
-        $inputsToCheck['referer'] = urldecode($request->header('Referer') ?? '');
+        $inputsToCheck['referer'] = $request->header('Referer') ?? '';
+
+        // Check cookies
+        foreach ($request->cookies->all() as $cookieName => $cookieValue) {
+            if (is_string($cookieValue) && $cookieValue !== '') {
+                $inputsToCheck["cookie_{$cookieName}"] = $cookieValue;
+            }
+        }
 
         foreach ($inputsToCheck as $source => $input) {
             if (! is_string($input) || $input === '') {
                 continue;
             }
 
+            // Generate multiple decoded versions for multi-encoding detection
+            $decodedVersions = $this->multiDecode($input);
+
             foreach ($this->scenarios as $scenarioName => $config) {
                 // Skip non-pattern scenarios
-                if (in_array($scenarioName, ['behavior', 'defaults', 'whitelist_ips', 'login_routes', 'enabled', 'blocked_response_message', 'log_channel'])) {
+                if (in_array($scenarioName, self::NON_SCENARIO_KEYS, true)) {
                     continue;
                 }
 
@@ -93,28 +112,31 @@ class CrowdSecService
                     continue;
                 }
 
-                // Only check 'user_agent' source against suspicious_user_agent scenario
-                if ($scenarioName === 'suspicious_user_agent' && $source !== 'user_agent') {
+                // Route patterns to correct sources
+                if (! $this->shouldCheckScenario($scenarioName, $source)) {
                     continue;
                 }
 
-                // Skip suspicious_user_agent for non-user-agent sources
-                if ($scenarioName !== 'suspicious_user_agent' && $source === 'user_agent') {
-                    continue;
-                }
+                $matched = false;
 
                 foreach ($config['patterns'] as $pattern) {
-                    if (@preg_match($pattern, $input) === 1) {
-                        $threats[] = [
-                            'type' => $scenarioName,
-                            'source' => $source,
-                            'matched' => Str::limit($input, 100),
-                            'severity' => $config['severity'] ?? 'medium',
-                            'weight' => $config['weight'] ?? 5,
-                        ];
+                    // Check each decoded version against the pattern
+                    foreach ($decodedVersions as $decoded) {
+                        if (@preg_match($pattern, $decoded) === 1) {
+                            $threats[] = [
+                                'type' => $scenarioName,
+                                'source' => $source,
+                                'matched' => Str::limit($input, 100),
+                                'severity' => $config['severity'] ?? 'medium',
+                                'weight' => $config['weight'] ?? 5,
+                            ];
+                            $matched = true;
+                            break; // Stop checking decoded versions
+                        }
+                    }
 
-                        // Break after first match per scenario/source to avoid duplicates
-                        break;
+                    if ($matched) {
+                        break; // Stop checking patterns for this scenario/source
                     }
                 }
             }
@@ -124,28 +146,95 @@ class CrowdSecService
     }
 
     /**
-     * Extract and flatten POST data for checking (including JSON/Livewire payloads)
+     * Determine if a scenario should be checked against a given source.
      */
-    protected function extractPostData(Request $request): array
+    protected function shouldCheckScenario(string $scenarioName, string $source): bool
+    {
+        $isUserAgent = $source === 'user_agent';
+
+        // suspicious_user_agent only checks UA
+        if ($scenarioName === 'suspicious_user_agent') {
+            return $isUserAgent;
+        }
+
+        // All other scenarios skip UA
+        if ($isUserAgent) {
+            return false;
+        }
+
+        // header_injection only checks headers
+        if ($scenarioName === 'header_injection') {
+            return in_array($source, ['referer', 'user_agent']) || str_starts_with($source, 'header_');
+        }
+
+        // open_redirect only checks query and path
+        if ($scenarioName === 'open_redirect') {
+            return in_array($source, ['query', 'path']);
+        }
+
+        return true;
+    }
+
+    /**
+     * Produce multiple decoded versions of input for multi-layer attack detection.
+     * Catches double-URL-encoding, hex encoding, and unicode escapes.
+     */
+    protected function multiDecode(string $input): array
+    {
+        $versions = [];
+
+        // Original input
+        $versions[] = $input;
+
+        // Single URL decode
+        $decoded1 = urldecode($input);
+        if ($decoded1 !== $input) {
+            $versions[] = $decoded1;
+
+            // Double URL decode (catches double-encoded attacks like %2527 → %27 → ')
+            $decoded2 = urldecode($decoded1);
+            if ($decoded2 !== $decoded1) {
+                $versions[] = $decoded2;
+            }
+        }
+
+        // HTML entity decode
+        $htmlDecoded = html_entity_decode($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if ($htmlDecoded !== $input && ! in_array($htmlDecoded, $versions, true)) {
+            $versions[] = $htmlDecoded;
+        }
+
+        return array_unique($versions);
+    }
+
+    /**
+     * Extract and flatten body data for checking (supports JSON, form data, XML)
+     */
+    protected function extractBodyData(Request $request): array
     {
         $flatData = [];
 
-        // Try to get data from standard POST
+        // Standard form / JSON data
         $data = $request->all();
 
-        // If empty, try to decode JSON body (Livewire uses JSON)
+        // If empty, try to decode JSON body
         if (empty($data)) {
             $content = $request->getContent();
             if (! empty($content)) {
                 $jsonData = json_decode($content, true);
                 if (is_array($jsonData)) {
                     $data = $jsonData;
+                } else {
+                    // Raw body (could be XML or other payloads) — check as-is
+                    $flatData['raw_body'] = $content;
                 }
             }
         }
 
         // Flatten the data for pattern matching
-        $this->flattenData($data, '', $flatData);
+        if (! empty($data)) {
+            $this->flattenData($data, '', $flatData);
+        }
 
         return $flatData;
     }
@@ -155,7 +244,6 @@ class CrowdSecService
      */
     protected function flattenData(array $data, string $prefix, array &$flatData, int $depth = 0): void
     {
-        // Prevent infinite recursion on deeply nested data
         if ($depth > 10) {
             return;
         }
@@ -164,14 +252,52 @@ class CrowdSecService
             $fullKey = $prefix ? "{$prefix}[{$key}]" : $key;
 
             if (is_array($value)) {
-                // For nested structures (like Livewire components), encode to JSON
-                $flatData[$fullKey] = urldecode(json_encode($value));
-                // Also check individual nested values
+                $flatData[$fullKey] = json_encode($value);
                 $this->flattenData($value, $fullKey, $flatData, $depth + 1);
             } else {
-                $flatData[$fullKey] = is_string($value) ? urldecode($value) : (string) $value;
+                $flatData[$fullKey] = is_string($value) ? $value : (string) $value;
             }
         }
+    }
+
+    /**
+     * Check for content-length anomaly
+     */
+    public function isOversizedRequest(Request $request): bool
+    {
+        $maxLength = $this->scenarios['max_content_length'] ?? 0;
+
+        if ($maxLength <= 0) {
+            return false;
+        }
+
+        $contentLength = $request->header('Content-Length', 0);
+
+        return (int) $contentLength > $maxLength;
+    }
+
+    /**
+     * Check for empty / missing user agent
+     */
+    public function hasEmptyUserAgent(Request $request): bool
+    {
+        if (! ($this->scenarios['block_empty_ua'] ?? false)) {
+            return false;
+        }
+
+        $ua = $request->userAgent();
+
+        return empty($ua) || trim($ua) === '' || $ua === '-';
+    }
+
+    /**
+     * Check if HTTP method is blocked
+     */
+    public function isBlockedMethod(Request $request): bool
+    {
+        $blockedMethods = $this->scenarios['blocked_methods'] ?? [];
+
+        return in_array(strtoupper($request->method()), $blockedMethods, true);
     }
 
     /**
@@ -205,6 +331,20 @@ class CrowdSecService
         $behavior->incrementLoginAttempts();
 
         return $behavior;
+    }
+
+    /**
+     * Add threat score based on detected threats
+     */
+    public function addThreatScoreFromThreats(string $ip, array $threats): void
+    {
+        if (empty($threats)) {
+            return;
+        }
+
+        $totalWeight = array_sum(array_column($threats, 'weight'));
+        $behavior = IpBehavior::getOrCreate($ip);
+        $behavior->addThreatScore($totalWeight);
     }
 
     /**
@@ -246,7 +386,8 @@ class CrowdSecService
     }
 
     /**
-     * Block an IP address
+     * Block an IP address with progressive escalation.
+     * Each re-offense doubles the previous block duration.
      */
     public function blockIp(
         string $ip,
@@ -254,13 +395,25 @@ class CrowdSecService
         ?int $durationMinutes = null,
         ?string $eventType = null
     ): BlockedIp {
-        // Determine block duration based on severity if not provided
+        // Determine base block duration
         if ($durationMinutes === null) {
             $severity = $this->getSeverityFromReason($reason);
             $durationMinutes = $this->scenarios['defaults'][$severity] ?? 240;
         }
 
-        // Use updateOrCreate to handle the unique constraint on 'ip'
+        // Progressive escalation: check past blocks to escalate duration
+        $behavior = IpBehavior::where('ip', $ip)->first();
+        if ($behavior) {
+            $blockCount = $behavior->block_count ?? 0;
+            if ($blockCount > 0) {
+                // Double duration for each previous block, capped at 7 days
+                $escalatedDuration = $durationMinutes * pow(2, min($blockCount, 5));
+                $durationMinutes = min($escalatedDuration, 10080); // max 7 days
+            }
+            $behavior->increment('block_count');
+        }
+
+        // Use updateOrCreate to handle re-blocking
         $blockedIp = BlockedIp::updateOrCreate(
             ['ip' => $ip],
             [
@@ -275,6 +428,7 @@ class CrowdSecService
             'ip' => $ip,
             'reason' => $reason,
             'duration_minutes' => $durationMinutes,
+            'block_count' => ($behavior->block_count ?? 1),
         ]);
 
         return $blockedIp;
@@ -369,7 +523,6 @@ class CrowdSecService
 
     /**
      * Compare severity levels and return the highest.
-     * Uses numeric weights to avoid alphabetical string comparison bug.
      */
     public function getMaxSeverity(array $severities): string
     {
@@ -398,10 +551,10 @@ class CrowdSecService
     {
         $reasonLower = strtolower($reason);
 
-        if (Str::contains($reasonLower, ['sql', 'command', 'injection', 'serialization'])) {
+        if (Str::contains($reasonLower, ['sql', 'command', 'injection', 'serialization', 'ssrf', 'xxe', 'ssti', 'nosql'])) {
             return 'critical';
         }
-        if (Str::contains($reasonLower, ['xss', 'traversal', 'inclusion'])) {
+        if (Str::contains($reasonLower, ['xss', 'traversal', 'inclusion', 'ldap'])) {
             return 'high';
         }
         if (Str::contains($reasonLower, ['behavior', 'threshold', 'brute'])) {
@@ -412,7 +565,7 @@ class CrowdSecService
     }
 
     /**
-     * Internal logging helper — uses configured log channel if set
+     * Internal logging helper
      */
     protected function log(string $level, string $message, array $context = []): void
     {

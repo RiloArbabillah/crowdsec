@@ -49,7 +49,7 @@ class CrowdSecProtection
     {
         $ip = $request->ip() ?? 'unknown';
 
-        // 1. Skip for whitelisted IPs first (performance)
+        // 1. Skip for whitelisted IPs (performance)
         if ($this->isWhitelisted($ip)) {
             return $next($request);
         }
@@ -59,9 +59,28 @@ class CrowdSecProtection
             return $this->blockedResponse($request, 'IP is blocked');
         }
 
-        // 3. Check if this is a login request
+        // 3. Block suspicious HTTP methods (TRACE, CONNECT, etc.)
+        if ($this->service->isBlockedMethod($request)) {
+            $this->service->blockIp($ip, 'Blocked HTTP method: ' . $request->method(), 720, 'blocked_method');
+
+            return $this->blockedResponse($request, 'HTTP method not allowed');
+        }
+
+        // 4. Check for empty User-Agent (bot indicator)
+        if ($this->service->hasEmptyUserAgent($request)) {
+            $behavior = \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior::getOrCreate($ip);
+            $behavior->addThreatScore(15);
+
+            // Don't block immediately, just score — repeated offenses will trigger threshold
+        }
+
+        // 5. Check for oversized request body
+        if ($this->service->isOversizedRequest($request)) {
+            return $this->blockedResponse($request, 'Request body too large');
+        }
+
+        // 6. Check if this is a login request
         if ($this->isLoginRequest($request)) {
-            // For login requests: track attempt and check login threshold
             $this->service->trackLoginAttempt($ip);
 
             if ($this->service->exceedsLoginThreshold($ip)) {
@@ -74,14 +93,17 @@ class CrowdSecProtection
             return $next($request);
         }
 
-        // 4. For non-login requests: run WAF pattern detection
+        // 7. Run WAF pattern detection
         $threats = $this->service->analyzeRequest($request);
 
         if (! empty($threats)) {
-            // Log the event (single place — no more duplicate logging)
+            // Log the event
             $this->service->logEvent($ip, $threats, $request);
 
-            // Separate blocking threats (critical + high + medium) from low
+            // Add cumulative threat score from detected patterns
+            $this->service->addThreatScoreFromThreats($ip, $threats);
+
+            // Separate blocking threats from low severity
             $blockingThreats = $this->service->getBlockingThreats($threats);
 
             // Block if blocking-level threats exist
@@ -93,20 +115,20 @@ class CrowdSecProtection
                 return $this->blockedResponse($request, 'Malicious pattern detected');
             }
 
-            // For low severity: already logged above, continue processing
+            // Low severity: logged + scored above, continue processing
         }
 
-        // 5. Track behavior
+        // 8. Track behavior
         $this->service->trackBehavior($ip, $request->path());
 
-        // 6. Check behavior thresholds
+        // 9. Check behavior thresholds (including cumulative threat score)
         if ($this->service->exceedsBehaviorThreshold($ip)) {
             $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
 
             return $this->blockedResponse($request, 'Rate limit exceeded');
         }
 
-        // 7. Process the request and track 404 responses
+        // 10. Process the request and track 404 responses
         $response = $next($request);
 
         if ($response->getStatusCode() === 404) {
@@ -128,12 +150,10 @@ class CrowdSecProtection
         }
 
         foreach ($whitelist as $entry) {
-            // Exact match
             if ($ip === $entry) {
                 return true;
             }
 
-            // CIDR match (e.g., 10.0.0.0/8, 192.168.0.0/16)
             if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
                 return true;
             }
@@ -143,8 +163,7 @@ class CrowdSecProtection
     }
 
     /**
-     * Check if an IP address falls within a CIDR range.
-     * Supports both IPv4 and IPv6.
+     * Check if an IP address falls within a CIDR range (IPv4/IPv6)
      */
     protected function ipInCidr(string $ip, string $cidr): bool
     {
@@ -158,12 +177,10 @@ class CrowdSecProtection
             return false;
         }
 
-        // Both must be same IP version (same byte length)
         if (strlen($ipBin) !== strlen($subnetBin)) {
             return false;
         }
 
-        // Create mask and compare
         $mask = str_repeat("\xff", (int) ($bits / 8));
         if ($bits % 8 > 0) {
             $mask .= chr(256 - (1 << (8 - ($bits % 8))));
@@ -199,14 +216,11 @@ class CrowdSecProtection
      */
     protected function blockedResponse(Request $request, string $reason): Response
     {
-        $ip = $request->ip() ?? 'unknown';
-
         $message = config(
             'crowdsec-scenarios.blocked_response_message',
             'Forbidden - Your IP has been blocked due to suspicious activity'
         );
 
-        // Return 403 Forbidden
         return response($message, 403);
     }
 }

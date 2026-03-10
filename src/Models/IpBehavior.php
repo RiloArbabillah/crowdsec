@@ -17,6 +17,7 @@ class IpBehavior extends Model
         'error_404_count',
         'login_attempts',
         'threat_score',
+        'block_count',
         'first_activity',
         'last_activity',
     ];
@@ -26,6 +27,7 @@ class IpBehavior extends Model
         'error_404_count' => 'integer',
         'login_attempts' => 'integer',
         'threat_score' => 'decimal:2',
+        'block_count' => 'integer',
         'first_activity' => 'datetime',
         'last_activity' => 'datetime',
         'created_at' => 'datetime',
@@ -83,6 +85,7 @@ class IpBehavior extends Model
                 'error_404_count' => 0,
                 'login_attempts' => 0,
                 'threat_score' => 0,
+                'block_count' => 0,
                 'first_activity' => now(),
                 'last_activity' => now(),
             ]

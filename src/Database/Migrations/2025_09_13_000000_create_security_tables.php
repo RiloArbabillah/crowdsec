@@ -51,6 +51,7 @@ return new class extends Migration
             $table->unsignedInteger('error_404_count')->default(0);
             $table->unsignedInteger('login_attempts')->default(0);
             $table->decimal('threat_score', 5, 2)->default(0);
+            $table->unsignedInteger('block_count')->default(0);
             $table->timestamp('first_activity')->nullable();
             $table->timestamp('last_activity')->nullable();
             $table->timestamps();
