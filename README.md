@@ -9,13 +9,23 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 
 ## Features
 
-- **WAF Pattern Detection**: Detects SQL injection, XSS, path traversal, command injection, and more
-- **IP Blocking**: Temporary IP blocks with automatic expiration
-- **Behavior-based Protection**: Rate limiting and brute-force detection
-- **Security Logging**: Records all security events for analysis
-- **CLI Commands**: Statistics and cleanup utilities
+- **WAF Pattern Detection**: Detects SQL injection, XSS, path traversal, command injection, and 11 more attack types
+- **IP Blocking**: Temporary IP blocks with automatic expiration and progressive escalation
+- **Behavior-based Protection**: Rate limiting, brute-force detection, and threat score tracking with auto-decay
+- **Caching Layer**: Cached blocked IP lookups for high-traffic applications
+- **Event System**: 4 Laravel events (ThreatDetected, IpBlocked, IpUnblocked, BehaviorThresholdExceeded)
+- **Notifications**: Email and Slack alerts with severity filtering and rate limiting
+- **Honeypot Routes**: Trap routes to catch automated scanners
+- **Per-Route Rate Limiting**: Configurable rate limits via middleware (`crowdsec.rate:60,1`)
+- **Custom Patterns**: Register custom detection scenarios at runtime
+- **GeoIP Lookup**: IP geolocation via ip-api.com with caching
+- **REST API**: 6 API endpoints for programmatic management (block, unblock, check, stats, events, blocked)
+- **Admin Dashboard**: Standalone dark theme Blade dashboard (enable via config)
+- **SIEM Export**: Export events in JSON, CSV, or Syslog (RFC 5424) format
+- **CLI Commands**: Statistics, cleanup, and export utilities
 - **Facade API**: Easy programmatic access to all features
 - **Auto-migrations**: Database tables created automatically
+- **CI Pipeline**: GitHub Actions with PHP 8.1/8.2/8.3 × Laravel 10.x/11.x matrix
 
 ## Requirements
 
