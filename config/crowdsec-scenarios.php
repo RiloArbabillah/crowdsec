@@ -480,4 +480,13 @@ return [
         'cache_ttl' => 86400, // Cache GeoIP results for 24 hours
         'custom_callback' => null, // callable for custom provider
     ],
+
+    // =========================================================================
+    // REST API
+    // =========================================================================
+
+    'api' => [
+        'enabled' => env('CROWDSEC_API_ENABLED', false),
+        'middleware' => ['api'], // Add 'auth:sanctum' for production
+    ],
 ];

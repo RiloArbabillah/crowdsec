@@ -44,6 +44,11 @@ class CrowdSecServiceProvider extends ServiceProvider
             __DIR__.'/../config/crowdsec-scenarios.php' => config_path('crowdsec-scenarios.php'),
         ], 'crowdsec-config');
 
+        // Load API routes (if enabled)
+        if (config('crowdsec-scenarios.api.enabled', false)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+        }
+
         // Register commands
         if ($this->app->runningInConsole()) {
             $this->commands([

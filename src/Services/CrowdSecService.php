@@ -39,6 +39,7 @@ class CrowdSecService
         'notifications',
         'honeypot_routes',
         'geoip',
+        'api',
     ];
 
     public function __construct()
@@ -101,6 +102,50 @@ class CrowdSecService
         return $this->cacheStore()->remember($cacheKey, $cacheTtl, function () use ($ip) {
             return BlockedIp::isBlocked($ip);
         });
+    }
+
+    /**
+     * Check if an IP is whitelisted (supports exact match and CIDR notation)
+     */
+    public function isWhitelisted(string $ip): bool
+    {
+        $whitelist = $this->scenarios['whitelist_ips'] ?? [];
+
+        foreach ($whitelist as $entry) {
+            if ($ip === $entry) {
+                return true;
+            }
+            if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if an IP address falls within a CIDR range
+     */
+    protected function ipInCidr(string $ip, string $cidr): bool
+    {
+        [$subnet, $bits] = explode('/', $cidr, 2);
+        $bits = (int) $bits;
+
+        $ipBin = inet_pton($ip);
+        $subnetBin = inet_pton($subnet);
+
+        if ($ipBin === false || $subnetBin === false) {
+            return false;
+        }
+
+        $mask = str_repeat('f', (int) ($bits / 4));
+        if ($bits % 4) {
+            $mask .= dechex(0xF << (4 - ($bits % 4)) & 0xF);
+        }
+        $mask = str_pad($mask, strlen(bin2hex($ipBin)), '0');
+        $mask = pack('H*', $mask);
+
+        return ($ipBin & $mask) === ($subnetBin & $mask);
     }
 
     /**
