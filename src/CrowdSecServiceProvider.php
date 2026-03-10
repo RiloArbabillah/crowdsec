@@ -53,6 +53,7 @@ class CrowdSecServiceProvider extends ServiceProvider
         $router = $this->app['router'];
         $router->aliasMiddleware('crowdsec', CrowdSecProtection::class);
         $router->aliasMiddleware('crowdsec.honeypot', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\HoneypotTrap::class);
+        $router->aliasMiddleware('crowdsec.rate', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecRateLimit::class);
 
         // Listen for successful authentication to unblock IP and reset login attempts
         Event::listen(Authenticated::class, function (Authenticated $event) {
