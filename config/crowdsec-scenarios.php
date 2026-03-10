@@ -489,4 +489,14 @@ return [
         'enabled' => env('CROWDSEC_API_ENABLED', false),
         'middleware' => ['api'], // Add 'auth:sanctum' for production
     ],
+
+    // =========================================================================
+    // ADMIN DASHBOARD
+    // =========================================================================
+
+    'dashboard' => [
+        'enabled' => env('CROWDSEC_DASHBOARD_ENABLED', false),
+        'path' => 'crowdsec', // Dashboard URL path
+        'middleware' => ['web'], // Add 'auth' for production
+    ],
 ];

@@ -40,6 +40,7 @@ class CrowdSecService
         'honeypot_routes',
         'geoip',
         'api',
+        'dashboard',
     ];
 
     public function __construct()
