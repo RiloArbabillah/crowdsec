@@ -6,6 +6,8 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
+use RiloArbabillah\LaravelCrowdSec\Events\BehaviorThresholdExceeded;
+use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecProtection
@@ -100,6 +102,10 @@ class CrowdSecProtection
             // Log the event
             $this->service->logEvent($ip, $threats, $request);
 
+            // Dispatch ThreatDetected event
+            $severity = $this->service->getMaxSeverity(array_column($threats, 'severity'));
+            ThreatDetected::dispatch($ip, $threats, $severity, $request->path(), $request->method(), $request);
+
             // Add cumulative threat score from detected patterns
             $this->service->addThreatScoreFromThreats($ip, $threats);
 
@@ -123,6 +129,18 @@ class CrowdSecProtection
 
         // 9. Check behavior thresholds (including cumulative threat score)
         if ($this->service->exceedsBehaviorThreshold($ip)) {
+            // Dispatch BehaviorThresholdExceeded event
+            $behavior = \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior::where('ip', $ip)->first();
+            if ($behavior) {
+                BehaviorThresholdExceeded::dispatch(
+                    $ip,
+                    (float) $behavior->threat_score,
+                    $behavior->request_count,
+                    $behavior->error_404_count,
+                    $behavior->login_attempts
+                );
+            }
+
             $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
 
             return $this->blockedResponse($request, 'Rate limit exceeded');
