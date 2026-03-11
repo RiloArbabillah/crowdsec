@@ -240,6 +240,12 @@ class CrowdSecService
             }
         }
 
+        // Deep inspection: file uploads
+        $threats = array_merge($threats, $this->inspectFileUploads($request));
+
+        // Deep inspection: JWT payloads
+        $threats = array_merge($threats, $this->inspectJwtPayloads($request));
+
         return $threats;
     }
 
@@ -302,7 +308,190 @@ class CrowdSecService
             $versions[] = $htmlDecoded;
         }
 
+        // Base64 decode — detect encoded payloads
+        $b64Decoded = $this->tryBase64Decode($input);
+        if ($b64Decoded !== null && ! in_array($b64Decoded, $versions, true)) {
+            $versions[] = $b64Decoded;
+
+            // Recursive: base64 inside base64 (up to 1 more level)
+            $b64Inner = $this->tryBase64Decode($b64Decoded);
+            if ($b64Inner !== null && ! in_array($b64Inner, $versions, true)) {
+                $versions[] = $b64Inner;
+            }
+        }
+
         return array_unique($versions);
+    }
+
+    /**
+     * Try to decode a Base64-encoded string. Returns decoded content if valid, null otherwise.
+     */
+    protected function tryBase64Decode(string $input): ?string
+    {
+        // Only attempt if it looks like Base64 (min 8 chars, valid charset)
+        if (strlen($input) < 8 || ! preg_match('/^[A-Za-z0-9+\/=]{8,}$/', trim($input))) {
+            return null;
+        }
+
+        $decoded = base64_decode(trim($input), true);
+        if ($decoded === false || $decoded === '') {
+            return null;
+        }
+
+        // Only accept if decoded content is printable text (not binary noise)
+        if (! mb_check_encoding($decoded, 'UTF-8') || preg_match('/[\x00-\x08\x0E-\x1F]/', $decoded)) {
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Inspect uploaded files for dangerous content.
+     */
+    protected function inspectFileUploads(Request $request): array
+    {
+        $threats = [];
+        $dangerousExtensions = ['php', 'php3', 'php4', 'php5', 'php7', 'phtml', 'phar', 'shtml', 'asp', 'aspx', 'jsp', 'cgi'];
+
+        foreach ($request->allFiles() as $field => $files) {
+            $fileList = is_array($files) ? $files : [$files];
+
+            foreach ($fileList as $file) {
+                if (! $file instanceof \Illuminate\Http\UploadedFile) {
+                    continue;
+                }
+
+                $name = $file->getClientOriginalName();
+                $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+                // Check dangerous extensions
+                if (in_array($ext, $dangerousExtensions, true)) {
+                    $threats[] = [
+                        'type' => 'file_upload_threat',
+                        'source' => "upload_{$field}",
+                        'matched' => $name,
+                        'severity' => 'critical',
+                        'weight' => 15,
+                    ];
+                }
+
+                // Check double-extension attacks (e.g. image.jpg.php)
+                if (preg_match('/\.\w+\.(php\d?|phtml|phar|shtml)$/i', $name)) {
+                    $threats[] = [
+                        'type' => 'file_upload_double_ext',
+                        'source' => "upload_{$field}",
+                        'matched' => $name,
+                        'severity' => 'critical',
+                        'weight' => 15,
+                    ];
+                }
+
+                // Check path traversal in filename
+                if (str_contains($name, '..') || str_contains($name, '/') || str_contains($name, '\\')) {
+                    $threats[] = [
+                        'type' => 'file_upload_path_traversal',
+                        'source' => "upload_{$field}",
+                        'matched' => $name,
+                        'severity' => 'critical',
+                        'weight' => 15,
+                    ];
+                }
+            }
+        }
+
+        return $threats;
+    }
+
+    /**
+     * Inspect JWT tokens for injected claims.
+     */
+    protected function inspectJwtPayloads(Request $request): array
+    {
+        $threats = [];
+        $tokens = [];
+
+        // Extract from Authorization header
+        $authHeader = $request->header('Authorization', '');
+        if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
+            $tokens['authorization_header'] = $m[1];
+        }
+
+        // Extract from body (common field names)
+        foreach (['token', 'jwt', 'access_token', 'id_token'] as $field) {
+            $val = $request->input($field);
+            if (is_string($val) && $val !== '') {
+                $tokens["body_{$field}"] = $val;
+            }
+        }
+
+        foreach ($tokens as $source => $token) {
+            $parts = explode('.', $token);
+            if (count($parts) !== 3) {
+                continue; // Not a JWT format
+            }
+
+            $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+            if (! is_array($payload)) {
+                continue;
+            }
+
+            // Check for privilege escalation attempts
+            foreach (['role', 'roles', 'is_admin', 'admin', 'scope', 'scopes'] as $claimKey) {
+                if (! isset($payload[$claimKey])) {
+                    continue;
+                }
+
+                $val = is_array($payload[$claimKey])
+                    ? implode(',', $payload[$claimKey])
+                    : (string) $payload[$claimKey];
+
+                if ($this->safeMatch('/\b(admin|root|superuser|super_admin)\b/i', $val)) {
+                    $threats[] = [
+                        'type' => 'jwt_privilege_escalation',
+                        'source' => $source,
+                        'matched' => "{$claimKey}={$val}",
+                        'severity' => 'critical',
+                        'weight' => 20,
+                    ];
+                }
+            }
+
+            // Scan all JWT payload values against WAF patterns
+            foreach ($payload as $key => $value) {
+                if (! is_string($value)) {
+                    continue;
+                }
+
+                $decodedVersions = $this->multiDecode($value);
+
+                foreach ($this->scenarios as $scenarioName => $config) {
+                    if (in_array($scenarioName, self::NON_SCENARIO_KEYS, true)) {
+                        continue;
+                    }
+                    if (! isset($config['patterns']) || ! is_array($config['patterns'])) {
+                        continue;
+                    }
+
+                    foreach ($config['patterns'] as $pattern) {
+                        foreach ($decodedVersions as $decoded) {
+                            if ($this->safeMatch($pattern, $decoded)) {
+                                $threats[] = [
+                                    'type' => "jwt_payload_{$scenarioName}",
+                                    'source' => $source,
+                                    'matched' => Str::limit("{$key}={$value}", 100),
+                                    'severity' => $config['severity'] ?? 'high',
+                                    'weight' => ($config['weight'] ?? 5) + 5,
+                                ];
+                                break 2;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $threats;
     }
 
     /**
