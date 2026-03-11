@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use RiloArbabillah\LaravelCrowdSec\Events\IpBlocked;
 use RiloArbabillah\LaravelCrowdSec\Events\IpUnblocked;
 use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
+use RiloArbabillah\LaravelCrowdSec\Models\AuditLog;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -41,6 +42,7 @@ class CrowdSecService
         'geoip',
         'api',
         'metrics',
+        'audit',
         'dashboard',
     ];
 
@@ -533,6 +535,16 @@ class CrowdSecService
         // Dispatch IpBlocked event
         IpBlocked::dispatch($ip, $reason, $durationMinutes, $behavior->block_count ?? 1, $eventType);
 
+        // Record audit log
+        if (config('crowdsec-scenarios.audit.enabled', false)) {
+            AuditLog::record('ip_blocked', $ip, [
+                'reason' => $reason,
+                'duration_minutes' => $durationMinutes,
+                'block_count' => $behavior->block_count ?? 1,
+                'event_type' => $eventType,
+            ]);
+        }
+
         return $blockedIp;
     }
 
@@ -553,6 +565,11 @@ class CrowdSecService
 
             // Dispatch IpUnblocked event
             IpUnblocked::dispatch($ip);
+
+            // Record audit log
+            if (config('crowdsec-scenarios.audit.enabled', false)) {
+                AuditLog::record('ip_unblocked', $ip);
+            }
 
             return true;
         }
