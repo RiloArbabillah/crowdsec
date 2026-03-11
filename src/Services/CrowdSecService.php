@@ -31,7 +31,7 @@ class CrowdSecService
     /**
      * Config keys that are NOT pattern-based scenarios.
      */
-    protected const NON_SCENARIO_KEYS = [
+    public const NON_SCENARIO_KEYS = [
         'behavior', 'defaults', 'whitelist_ips', 'login_routes',
         'enabled', 'blocked_response_message', 'log_channel',
         'max_content_length', 'block_empty_ua', 'blocked_methods',
