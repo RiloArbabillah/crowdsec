@@ -97,12 +97,11 @@ class DoctorCommandTest extends TestCase
 
     public function test_doctor_command_json_output(): void
     {
-        $output = new \Symfony\Component\Console\Output\BufferedOutput();
-        $this->app->make(\Illuminate\Contracts\Console\Kernel::class)
-            ->call('crowdsec:doctor', ['--json' => true], $output);
+        \Illuminate\Support\Facades\Artisan::call('crowdsec:doctor', ['--json' => true]);
+        $raw = \Illuminate\Support\Facades\Artisan::output();
 
-        $json = json_decode($output->fetch(), true);
-        $this->assertNotNull($json, 'Output should be valid JSON');
+        $json = json_decode($raw, true);
+        $this->assertNotNull($json, 'Output should be valid JSON. Raw: ' . substr($raw, 0, 200));
         $this->assertArrayHasKey('score', $json);
         $this->assertArrayHasKey('checks', $json);
         $this->assertArrayHasKey('recommendations', $json);
@@ -140,11 +139,10 @@ class DoctorCommandTest extends TestCase
 
     public function test_doctor_command_json_has_valid_structure(): void
     {
-        $output = new \Symfony\Component\Console\Output\BufferedOutput();
-        $this->app->make(\Illuminate\Contracts\Console\Kernel::class)
-            ->call('crowdsec:doctor', ['--json' => true], $output);
+        \Illuminate\Support\Facades\Artisan::call('crowdsec:doctor', ['--json' => true]);
+        $raw = \Illuminate\Support\Facades\Artisan::output();
 
-        $json = json_decode($output->fetch(), true);
+        $json = json_decode($raw, true);
         $this->assertNotNull($json);
         $this->assertIsInt($json['score']);
         $this->assertGreaterThanOrEqual(0, $json['score']);
