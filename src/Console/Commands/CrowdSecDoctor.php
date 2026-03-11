@@ -313,7 +313,7 @@ class CrowdSecDoctor extends Command
 
     protected function outputJson(): void
     {
-        $this->line(json_encode([
+        $this->info(json_encode([
             'score' => $this->score,
             'checks' => $this->results,
             'recommendations' => $this->getRecommendations(),
