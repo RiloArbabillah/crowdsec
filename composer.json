@@ -3,7 +3,18 @@
     "description": "A lightweight CrowdSec-like WAF protection package for Laravel",
     "type": "library",
     "license": "MIT",
-    "version": "1.0.0",
+    "keywords": ["laravel", "security", "waf", "crowdsec", "firewall", "protection", "middleware"],
+    "homepage": "https://github.com/RiloArbabillah/crowdsec",
+    "authors": [
+        {
+            "name": "Rilo Arbabillah",
+            "homepage": "https://github.com/RiloArbabillah"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/RiloArbabillah/crowdsec/issues",
+        "source": "https://github.com/RiloArbabillah/crowdsec"
+    },
     "require": {
         "php": "^8.1",
         "illuminate/contracts": "^10.0|^11.0|^12.0",
