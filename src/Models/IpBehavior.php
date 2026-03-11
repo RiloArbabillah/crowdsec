@@ -129,7 +129,7 @@ class IpBehavior extends Model
         }
 
         $minutesSinceLastActivity = $this->last_activity
-            ? now()->diffInMinutes($this->last_activity)
+            ? (int) now()->diffInMinutes($this->last_activity, absolute: true)
             : 0;
 
         if ($minutesSinceLastActivity < $decayIntervalMinutes) {
