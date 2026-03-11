@@ -49,6 +49,11 @@ class CrowdSecServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
         }
 
+        // Load metrics route (if enabled)
+        if (config('crowdsec-scenarios.metrics.enabled', false)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/metrics.php');
+        }
+
         // Load dashboard routes (if enabled)
         if (config('crowdsec-scenarios.dashboard.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');

@@ -491,6 +491,16 @@ return [
     ],
 
     // =========================================================================
+    // PROMETHEUS METRICS
+    // =========================================================================
+
+    'metrics' => [
+        'enabled' => env('CROWDSEC_METRICS_ENABLED', false),
+        'path' => 'crowdsec/metrics', // Metrics endpoint URL path
+        'middleware' => ['api'], // Consider adding IP-based auth for production
+    ],
+
+    // =========================================================================
     // ADMIN DASHBOARD
     // =========================================================================
 
