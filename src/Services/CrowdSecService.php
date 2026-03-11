@@ -217,7 +217,7 @@ class CrowdSecService
                 foreach ($config['patterns'] as $pattern) {
                     // Check each decoded version against the pattern
                     foreach ($decodedVersions as $decoded) {
-                        if (@preg_match($pattern, $decoded) === 1) {
+                        if ($this->safeMatch($pattern, $decoded)) {
                             $threats[] = [
                                 'type' => $scenarioName,
                                 'source' => $source,
@@ -722,5 +722,49 @@ class CrowdSecService
         if ($this->isCacheEnabled()) {
             $this->cacheStore()->forget($this->getBlockedCacheKey($ip));
         }
+    }
+
+    /**
+     * Safe regex match with backtracking limits to prevent ReDoS.
+     *
+     * Reduces pcre.backtrack_limit and pcre.recursion_limit during match,
+     * then restores original values. Returns false on catastrophic backtracking
+     * (fail-open design — a regex timeout should never block a legitimate user).
+     *
+     * @param  string  $pattern  Regex pattern
+     * @param  string  $subject  Input to match against (truncated to 8KB)
+     * @return bool Whether the pattern matched
+     */
+    public function safeMatch(string $pattern, string $subject): bool
+    {
+        // Truncate input to 8KB to limit regex processing time
+        $maxInputLength = 8192;
+        if (strlen($subject) > $maxInputLength) {
+            $subject = substr($subject, 0, $maxInputLength);
+        }
+
+        // Save current limits
+        $originalBacktrack = ini_get('pcre.backtrack_limit');
+        $originalRecursion = ini_get('pcre.recursion_limit');
+
+        // Reduce limits to prevent catastrophic backtracking
+        ini_set('pcre.backtrack_limit', '10000');
+        ini_set('pcre.recursion_limit', '1000');
+
+        $result = @preg_match($pattern, $subject);
+        $error = preg_last_error();
+
+        // Restore original limits
+        ini_set('pcre.backtrack_limit', $originalBacktrack);
+        ini_set('pcre.recursion_limit', $originalRecursion);
+
+        // Handle PCRE errors (backtrack limit exceeded, recursion limit, etc.)
+        if ($error !== PREG_NO_ERROR) {
+            Log::warning("CrowdSec: Regex error (code: {$error}) for pattern: {$pattern}");
+
+            return false; // Fail-open: don't block user on regex error
+        }
+
+        return $result === 1;
     }
 }
