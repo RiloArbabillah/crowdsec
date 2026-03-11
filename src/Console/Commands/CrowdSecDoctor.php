@@ -32,8 +32,11 @@ class CrowdSecDoctor extends Command
         return $this->score >= 70 ? self::SUCCESS : self::FAILURE;
     }
 
-    protected function runAllChecks(): void
+    public function runAllChecks(): void
     {
+        $this->results = [];
+        $this->score = 100;
+
         $this->checkPackageEnabled();
         $this->checkDatabaseMigrations();
         $this->checkRegexPatterns();
@@ -46,6 +49,16 @@ class CrowdSecDoctor extends Command
         $this->checkLoginRoutes();
         $this->checkHoneypotRoutes();
         $this->checkBlockedMethods();
+    }
+
+    public function getResults(): array
+    {
+        return $this->results;
+    }
+
+    public function getScore(): int
+    {
+        return $this->score;
     }
 
     protected function checkPackageEnabled(): void
