@@ -45,7 +45,7 @@ return [
             '/\bUNION\b\s+\bALL\b\s+\bSELECT\b/i',
             '/\bUNION\b\s+\bSELECT\b/i',
             // Common SQL keywords (multi-word to reduce false positives)
-            '/\bSELECT\b.*\bFROM\b.*\bWHERE\b/i',
+            '/\bSELECT\b[^;]{0,200}\bFROM\b[^;]{0,200}\bWHERE\b/i',
             '/\bINSERT\b\s+\bINTO\b/i',
             '/\bDELETE\b\s+\bFROM\b/i',
             '/\bUPDATE\b\s+\w+\s+\bSET\b/i',
@@ -82,7 +82,7 @@ return [
             '/<script[^>]*>/i',
             '/javascript\s*:/i',
             // Event handlers in HTML context (require < before them)
-            '/<[^>]+\bon\w+\s*=/i',
+            '/\<[^\>]{0,200}\bon\w+\s*=/i',
             '/<iframe[^>]*>/i',
             '/<object[^>]*>/i',
             '/<embed[^>]*>/i',
@@ -91,7 +91,7 @@ return [
             // Only dangerous data: URIs
             '/data\s*:\s*text\/html/i',
             // SVG-based XSS
-            '/<svg[^>]*\bon\w+/i',
+            '/\<svg[^\>]{0,200}\bon\w+/i',
             // Base tag hijack
             '/<base[^>]+href/i',
             // DOM manipulation in input
@@ -351,16 +351,16 @@ return [
             // Jinja2/Twig/Django/Blade
             '/\{\{\s*\d+\s*\*\s*\d+\s*\}\}/',       // {{7*7}}
             '/\{\{\s*[\w.]+\s*\(/',                   // {{func(
-            '/\{\{.*?__class__/i',                    // {{x.__class__
-            '/\{\{.*?__mro__/i',                      // MRO chain
-            '/\{\{.*?__subclasses__/i',               // Subclass access
+            '/\{\{[^}]{0,200}__class__/i',                    // {{x.__class__
+            '/\{\{[^}]{0,200}__mro__/i',                      // MRO chain
+            '/\{\{[^}]{0,200}__subclasses__/i',               // Subclass access
             '/\{%\s*(import|include|extends)\b/i',    // {%import / {%include
             // Smarty / PHP templates
             '/\{php\}/i',
             '/\{\$smarty/i',
             // EL / Java
-            '/\$\{.*?(Runtime|ProcessBuilder|getRuntime)/i',
-            '/#\{.*?(Runtime|processBuilder)/i',
+            '/\$\{[^}]{0,200}(Runtime|ProcessBuilder|getRuntime)/i',
+            '/#\{[^}]{0,200}(Runtime|processBuilder)/i',
             // Expression Language
             '/\$\{T\s*\(/i',                          // ${T(
         ],
