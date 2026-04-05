@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 11 Mar 2026
-> **Test suite:** 77 passed (108 assertions)
-> **Next focus:** Packagist submission, Laravel 12 support
+> Last updated: 05 Apr 2026
+> **Test suite:** 196 passed (347 assertions)
+> **Next focus:** cut the next `1.0.x` patch tag so Packagist picks up the latest hardening, docs, and Laravel 12 compatibility
 
 ---
 
@@ -126,7 +126,7 @@
 - [x] `POST /api/crowdsec/block` — block an IP
 - [x] `DELETE /api/crowdsec/block/{ip}` — unblock an IP
 - [x] `GET /api/crowdsec/check/{ip}` — check IP status
-- [x] Configurable middleware (default: `api`, recommend `auth:sanctum` for production)
+- [x] Configurable middleware (default: `api`, `auth:sanctum`)
 - [x] Disabled by default (enable via `CROWDSEC_API_ENABLED`)
 
 ### Admin Dashboard
@@ -176,9 +176,10 @@
 ### CI/CD
 
 - [x] GitHub Actions CI pipeline (`.github/workflows/tests.yml`)
-- [x] Matrix: PHP 8.1/8.2/8.3 × Laravel 10.x/11.x
+- [x] Matrix: PHP 8.1/8.2/8.3 × Laravel 10.x/11.x/12.x
 - [x] Composer dependency caching
 - [x] SQLite for testing
+- [x] Dedicated quality gate for `composer validate --strict` + `composer analyse`
 
 ### Testing
 
@@ -186,7 +187,8 @@
 - [x] 22 integration test cases (`CrowdSecMiddlewareTest` — full 10-step pipeline)
 - [x] 20 edge case tests (`EdgeCaseTest` — CIDR, escalation, body analysis, etc.)
 - [x] 8 performance benchmarks (all < 1ms target)
-- [x] Total: **77 tests, 108 assertions**
+- [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
+- [x] Total: **196 tests, 347 assertions**
 
 ### Documentation
 
@@ -200,8 +202,8 @@
 
 ### Next Steps
 
-- [ ] **Packagist submission** — publish ke packagist.org (manual action)
-- [ ] **Laravel 12 support** — compatibility testing
+- [ ] **Tag next `1.0.x` release** — publish the latest Laravel 12 compatibility and hardening updates to Packagist
+- [ ] **Refresh release notes after tagging** — sync README/CHANGELOG snapshots with the next stable tag
 
 ### Future Enhancements (v1.1+)
 
@@ -223,12 +225,12 @@
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Total tests**        | **77**     |
-| Test assertions        | 108        |
-| Laravel compatibility  | 10.x, 11.x |
+| **Total tests**        | **196**    |
+| Test assertions        | 347        |
+| Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
-| PRs merged             | 16         |
-| Issues closed          | 17         |
+| Package status         | Stable on Packagist |
+| CI quality gates       | PHPUnit + PHPStan |
 
 ---
 

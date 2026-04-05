@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Static Analysis Gate** — `composer analyse` plus a dedicated GitHub Actions quality job
+
+### Changed
+
+- **Laravel Compatibility** — current `master` branch now tests against Laravel 10.x/11.x/12.x
+- **Optional Endpoint Defaults** — API, metrics, and dashboard now default to authenticated middleware
+- **Release Docs** — README, PRD, and progress notes now distinguish the published `1.0.0` tag from the current `1.0.x` maintenance branch
+
+### Fixed
+
+- **Slack Notifications** — on-demand alerts now route correctly through configured mail and Slack channels
+- **Metrics Tests** — fixtures now match the current schema and model contracts
+
+> Note: The latest Packagist stable tag is still `1.0.0`. Laravel 12 compatibility and the changes listed in `Unreleased` are currently available on `master` and will ship in the next `1.0.x` tag.
+
 ## [1.0.0] - 2026-03-11
 
 ### Added
