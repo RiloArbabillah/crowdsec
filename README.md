@@ -528,7 +528,7 @@ Contributions are welcome! Please follow these steps:
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/my-new-feature`
 3. Make your changes
-4. Run tests: `composer test`
+4. Run checks: `composer test && composer analyse`
 5. Commit your changes: `git commit -am 'Add some feature'`
 6. Push to the branch: `git push origin feature/my-new-feature`
 7. Submit a Pull Request
@@ -538,6 +538,14 @@ Contributions are welcome! Please follow these steps:
 ```bash
 composer test
 ```
+
+### Running Static Analysis
+
+```bash
+composer analyse
+```
+
+GitHub Actions now runs both PHPUnit and PHPStan as part of the default CI pipeline.
 
 ## Security
 

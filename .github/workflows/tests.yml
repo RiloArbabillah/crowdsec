@@ -7,6 +7,43 @@ on:
     branches: [master]
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    name: Quality Gates
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Get Composer Cache Directory
+        id: quality-composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.quality-composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-quality-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-quality-
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Validate composer metadata
+        run: composer validate --strict
+
+      - name: Run static analysis
+        run: composer analyse
+
   tests:
     runs-on: ubuntu-latest
 
@@ -42,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ matrix.laravel }}-${{ hashFiles('**/composer.lock') }}
+          key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ matrix.laravel }}-${{ hashFiles('composer.json') }}
           restore-keys: |
             ${{ runner.os }}-composer-${{ matrix.php }}-${{ matrix.laravel }}-
             ${{ runner.os }}-composer-${{ matrix.php }}-
