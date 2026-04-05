@@ -3,6 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec\Tests\Feature;
 
 use Orchestra\Testbench\TestCase;
+use Illuminate\Support\Carbon;
 use RiloArbabillah\LaravelCrowdSec\CrowdSecServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Models\AuditLog;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
@@ -97,16 +98,16 @@ class AuditLogTest extends TestCase
 
     public function test_audit_log_scope_between(): void
     {
-        \Illuminate\Support\Carbon::setTestNow('2026-01-01 12:00:00');
+        Carbon::setTestNow('2026-01-01 12:00:00');
         AuditLog::record('ip_blocked', '1.1.1.1');
 
-        \Illuminate\Support\Carbon::setTestNow('2026-02-01 12:00:00');
+        Carbon::setTestNow('2026-02-01 12:00:00');
         AuditLog::record('ip_blocked', '2.2.2.2');
 
-        \Illuminate\Support\Carbon::setTestNow('2026-03-01 12:00:00');
+        Carbon::setTestNow('2026-03-01 12:00:00');
         AuditLog::record('ip_blocked', '3.3.3.3');
 
-        \Illuminate\Support\Carbon::setTestNow(); // reset
+        Carbon::setTestNow(); // reset
 
         $logs = AuditLog::between('2026-01-15', '2026-02-15')->get();
 
@@ -170,5 +171,44 @@ class AuditLogTest extends TestCase
         $this->assertDatabaseMissing('crowdsec_audit_logs', [
             'target_ip' => '10.0.0.3',
         ]);
+    }
+
+    public function test_cleanup_command_removes_old_audit_logs_based_on_retention(): void
+    {
+        config(['crowdsec-scenarios.audit.retention_days' => 30]);
+
+        Carbon::setTestNow('2026-04-05 12:00:00');
+        AuditLog::record('ip_blocked', '10.0.0.4');
+
+        Carbon::setTestNow('2026-01-01 12:00:00');
+        AuditLog::record('ip_blocked', '10.0.0.5');
+
+        Carbon::setTestNow('2026-04-05 12:00:00');
+
+        $this->artisan('crowdsec:cleanup')
+            ->expectsOutputToContain('audit log records older than 30 days')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('crowdsec_audit_logs', ['target_ip' => '10.0.0.4']);
+        $this->assertDatabaseMissing('crowdsec_audit_logs', ['target_ip' => '10.0.0.5']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_cleanup_command_dry_run_keeps_old_audit_logs(): void
+    {
+        config(['crowdsec-scenarios.audit.retention_days' => 30]);
+
+        Carbon::setTestNow('2026-01-01 12:00:00');
+        AuditLog::record('ip_blocked', '10.0.0.6');
+        Carbon::setTestNow('2026-04-05 12:00:00');
+
+        $this->artisan('crowdsec:cleanup', ['--dry-run' => true])
+            ->expectsOutputToContain('Would delete 1 audit log records older than 30 days')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('crowdsec_audit_logs', ['target_ip' => '10.0.0.6']);
+
+        Carbon::setTestNow();
     }
 }
