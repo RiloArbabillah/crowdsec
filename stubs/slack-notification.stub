@@ -1,0 +1,42 @@
+<?php
+
+namespace Illuminate\Notifications\Messages;
+
+class SlackMessage
+{
+    public function error(): self
+    {
+        return $this;
+    }
+
+    public function content(string $content): self
+    {
+        return $this;
+    }
+
+    /**
+     * @param  callable(SlackAttachment): void  $callback
+     */
+    public function attachment(callable $callback): self
+    {
+        $callback(new SlackAttachment());
+
+        return $this;
+    }
+}
+
+class SlackAttachment
+{
+    public function title(string $title): self
+    {
+        return $this;
+    }
+
+    /**
+     * @param  array<string, string>  $fields
+     */
+    public function fields(array $fields): self
+    {
+        return $this;
+    }
+}

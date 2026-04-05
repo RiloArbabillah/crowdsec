@@ -1,0 +1,12 @@
+parameters:
+    level: 5
+    paths:
+        - src/Console/Commands/CrowdSecDoctor.php
+        - src/Listeners
+        - src/Notifications
+        - routes
+    tmpDir: storage/phpstan
+    bootstrapFiles:
+        - stubs/slack-notification.stub
+    stubFiles:
+        - stubs/slack-notification.stub

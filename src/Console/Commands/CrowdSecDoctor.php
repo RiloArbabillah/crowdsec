@@ -364,6 +364,7 @@ class CrowdSecDoctor extends Command
                 'warn' => '  <fg=yellow>⚠️ </>',
                 'fail' => '  <fg=red>❌</>',
                 'info' => '  <fg=blue>ℹ️ </>',
+                default => '  <fg=blue>ℹ️ </>',
             };
             $this->line("{$icon} <options=bold>{$result['check']}:</> {$result['message']}");
         }
