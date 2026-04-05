@@ -446,10 +446,17 @@ return [
 
     'notifications' => [
         'enabled' => env('CROWDSEC_NOTIFY_ENABLED', false),
-        'channels' => ['mail'], // Supported: 'mail', 'slack'
+        'channels' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', env('CROWDSEC_NOTIFY_CHANNELS', 'mail'))
+        ))), // Supported: 'mail', 'slack'
         'severity_threshold' => 'high', // Only notify for this severity and above
         'rate_limit_minutes' => 5, // Max 1 notification per IP per N minutes
-        'recipients' => explode(',', env('CROWDSEC_NOTIFY_RECIPIENTS', '')),
+        'recipients' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', env('CROWDSEC_NOTIFY_RECIPIENTS', ''))
+        ))),
+        'slack_webhook_url' => env('CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL', ''),
     ],
 
     // =========================================================================

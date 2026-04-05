@@ -45,9 +45,9 @@ class SendSecurityAlert
 
         Cache::put($cacheKey, true, now()->addMinutes($rateLimitMinutes));
 
-        // Send notification
-        $recipients = $config['recipients'] ?? [];
-        if (empty($recipients)) {
+        $routes = $this->notificationRoutes($config);
+
+        if (empty($routes)) {
             return;
         }
 
@@ -62,7 +62,39 @@ class SendSecurityAlert
             ]
         );
 
-        Notification::route('mail', $recipients)
-            ->notify($notification);
+        Notification::routes($routes)->notify($notification);
+    }
+
+    protected function notificationRoutes(array $config): array
+    {
+        $channels = collect($config['channels'] ?? ['mail'])
+            ->map(fn ($channel) => strtolower(trim((string) $channel)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $routes = [];
+
+        if ($channels->contains('mail')) {
+            $recipients = collect($config['recipients'] ?? [])
+                ->map(fn ($recipient) => trim((string) $recipient))
+                ->filter()
+                ->values()
+                ->all();
+
+            if (! empty($recipients)) {
+                $routes['mail'] = $recipients;
+            }
+        }
+
+        if ($channels->contains('slack')) {
+            $webhookUrl = trim((string) ($config['slack_webhook_url'] ?? ''));
+
+            if ($webhookUrl !== '') {
+                $routes['slack'] = $webhookUrl;
+            }
+        }
+
+        return $routes;
     }
 }
