@@ -19,6 +19,8 @@ class CrowdSecDoctor extends Command
 
     protected int $score = 100;
 
+    protected bool $hasFailures = false;
+
     public function handle(): int
     {
         $this->runAllChecks();
@@ -29,13 +31,14 @@ class CrowdSecDoctor extends Command
             $this->outputTable();
         }
 
-        return $this->score >= 70 ? self::SUCCESS : self::FAILURE;
+        return ! $this->hasFailures && $this->score >= 70 ? self::SUCCESS : self::FAILURE;
     }
 
     public function runAllChecks(): void
     {
         $this->results = [];
         $this->score = 100;
+        $this->hasFailures = false;
 
         $this->checkPackageEnabled();
         $this->checkDatabaseMigrations();
@@ -44,6 +47,7 @@ class CrowdSecDoctor extends Command
         $this->checkNotifications();
         $this->checkGeoIpProvider();
         $this->checkApiConfig();
+        $this->checkMetricsConfig();
         $this->checkDashboardConfig();
         $this->checkWhitelist();
         $this->checkLoginRoutes();
@@ -223,13 +227,33 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $middleware = config('crowdsec-scenarios.api.middleware', []);
-        $hasAuth = collect($middleware)->contains(fn ($m) => str_contains($m, 'auth'));
+        $middleware = $this->normalizedMiddleware(config('crowdsec-scenarios.api.middleware', []));
+        $hasAuth = $this->hasAuthMiddleware($middleware);
 
         if (! $hasAuth) {
-            $this->addResult('REST API', 'warn', 'Enabled without auth middleware — add auth:sanctum for production', 10);
+            $this->addResult('REST API', 'fail', 'Enabled without auth middleware — add auth:sanctum or another authenticated guard', 15);
         } else {
-            $this->addResult('REST API', 'pass', 'Enabled with auth middleware');
+            $this->addResult('REST API', 'pass', 'Enabled with middleware: ' . implode(', ', $middleware));
+        }
+    }
+
+    protected function checkMetricsConfig(): void
+    {
+        $enabled = config('crowdsec-scenarios.metrics.enabled', false);
+
+        if (! $enabled) {
+            $this->addResult('Metrics', 'info', 'Disabled');
+            return;
+        }
+
+        $middleware = $this->normalizedMiddleware(config('crowdsec-scenarios.metrics.middleware', []));
+        $hasAuth = $this->hasAuthMiddleware($middleware);
+        $hasSigned = collect($middleware)->contains('signed');
+
+        if (! $hasAuth && ! $hasSigned) {
+            $this->addResult('Metrics', 'fail', 'Enabled without auth or signed middleware — restrict access before exposing metrics', 15);
+        } else {
+            $this->addResult('Metrics', 'pass', 'Enabled with middleware: ' . implode(', ', $middleware));
         }
     }
 
@@ -242,14 +266,14 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $middleware = config('crowdsec-scenarios.dashboard.middleware', []);
+        $middleware = $this->normalizedMiddleware(config('crowdsec-scenarios.dashboard.middleware', []));
         $path = config('crowdsec-scenarios.dashboard.path', 'crowdsec');
-        $hasAuth = collect($middleware)->contains(fn ($m) => str_contains($m, 'auth'));
+        $hasAuth = $this->hasAuthMiddleware($middleware);
 
         if (! $hasAuth) {
-            $this->addResult('Dashboard', 'warn', "Enabled at /{$path} without auth middleware", 10);
+            $this->addResult('Dashboard', 'fail', "Enabled at /{$path} without auth middleware", 15);
         } else {
-            $this->addResult('Dashboard', 'pass', "Enabled at /{$path} with auth");
+            $this->addResult('Dashboard', 'pass', "Enabled at /{$path} with middleware: " . implode(', ', $middleware));
         }
     }
 
@@ -305,7 +329,26 @@ class CrowdSecDoctor extends Command
             'status' => $status,
             'message' => $message,
         ];
+
+        if ($status === 'fail') {
+            $this->hasFailures = true;
+        }
+
         $this->score = max(0, $this->score - $penalty);
+    }
+
+    protected function normalizedMiddleware(array $middleware): array
+    {
+        return collect($middleware)
+            ->map(fn ($item) => trim((string) $item))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    protected function hasAuthMiddleware(array $middleware): bool
+    {
+        return collect($middleware)->contains(fn ($item) => str_contains($item, 'auth'));
     }
 
     protected function outputTable(): void

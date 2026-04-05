@@ -494,7 +494,7 @@ return [
 
     'api' => [
         'enabled' => env('CROWDSEC_API_ENABLED', false),
-        'middleware' => ['api'], // Add 'auth:sanctum' for production
+        'middleware' => ['api', 'auth:sanctum'], // Override if you use a different auth guard
     ],
 
     // =========================================================================
@@ -504,7 +504,7 @@ return [
     'metrics' => [
         'enabled' => env('CROWDSEC_METRICS_ENABLED', false),
         'path' => 'crowdsec/metrics', // Metrics endpoint URL path
-        'middleware' => ['api'], // Consider adding IP-based auth for production
+        'middleware' => ['web', 'auth'], // Override with signed or IP allowlist middleware if needed
     ],
 
     // =========================================================================
@@ -523,6 +523,6 @@ return [
     'dashboard' => [
         'enabled' => env('CROWDSEC_DASHBOARD_ENABLED', false),
         'path' => 'crowdsec', // Dashboard URL path
-        'middleware' => ['web'], // Add 'auth' for production
+        'middleware' => ['web', 'auth'],
     ],
 ];

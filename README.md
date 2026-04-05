@@ -404,7 +404,55 @@ Adjust `config/crowdsec-scenarios.php` based on your traffic:
 ],
 ```
 
-### 3. Whitelist Internal Services
+### 3. Protect Optional Endpoints Before Enabling Them
+
+The REST API, metrics endpoint, and dashboard are disabled by default. When you enable
+them, CrowdSec now defaults to authenticated middleware so they are not exposed publicly
+by accident.
+
+```php
+'api' => [
+    'enabled' => env('CROWDSEC_API_ENABLED', false),
+    'middleware' => ['api', 'auth:sanctum'],
+],
+
+'metrics' => [
+    'enabled' => env('CROWDSEC_METRICS_ENABLED', false),
+    'path' => 'crowdsec/metrics',
+    'middleware' => ['web', 'auth'],
+],
+
+'dashboard' => [
+    'enabled' => env('CROWDSEC_DASHBOARD_ENABLED', false),
+    'path' => 'crowdsec',
+    'middleware' => ['web', 'auth'],
+],
+```
+
+Recommended production overrides:
+
+```php
+'api' => [
+    'enabled' => true,
+    'middleware' => ['api', 'auth:sanctum'],
+],
+
+'metrics' => [
+    'enabled' => true,
+    'middleware' => ['signed'],
+],
+
+'dashboard' => [
+    'enabled' => true,
+    'middleware' => ['web', 'auth', 'verified'],
+],
+```
+
+Run `php artisan crowdsec:doctor` after enabling any of these surfaces. The doctor
+command now fails if the API or dashboard lacks authentication, or if metrics are
+exposed without `auth` or `signed` middleware.
+
+### 4. Whitelist Internal Services
 
 ```php
 'whitelist_ips' => [
@@ -416,7 +464,7 @@ Adjust `config/crowdsec-scenarios.php` based on your traffic:
 ],
 ```
 
-### 4. Set Up Log Monitoring
+### 5. Set Up Log Monitoring
 
 Monitor Laravel logs for CrowdSec warnings:
 
@@ -429,7 +477,7 @@ Monitor Laravel logs for CrowdSec warnings:
 ],
 ```
 
-### 5. Schedule Regular Cleanup
+### 6. Schedule Regular Cleanup
 
 ```php
 // In app/Console/Kernel.php
@@ -442,7 +490,7 @@ protected function schedule(Schedule $schedule)
 }
 ```
 
-### 6. Performance Considerations
+### 7. Performance Considerations
 
 - The middleware runs on every request - keep patterns optimized
 - IP whitelist is checked first for performance

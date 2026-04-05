@@ -44,6 +44,13 @@ class MetricsEndpointTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_metrics_route_uses_secure_default_middleware(): void
+    {
+        $config = require __DIR__ . '/../../config/crowdsec-scenarios.php';
+
+        $this->assertSame(['web', 'auth'], $config['metrics']['middleware']);
+    }
+
     public function test_metrics_endpoint_returns_openmetrics_content_type(): void
     {
         $response = $this->get('/crowdsec/metrics');
