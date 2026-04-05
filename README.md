@@ -313,6 +313,9 @@ Remove expired IP blocks and old security events:
 php artisan crowdsec:cleanup
 ```
 
+If audit logging is enabled, the cleanup command also prunes audit records older than
+`audit.retention_days`.
+
 #### Cleanup Options
 
 ```bash
@@ -327,6 +330,15 @@ php artisan crowdsec:cleanup --old-events
 
 # Clean only old behaviors (older than 7 days)
 php artisan crowdsec:cleanup --old-behaviors
+```
+
+Audit log retention is configured in `config/crowdsec-scenarios.php`:
+
+```php
+'audit' => [
+    'enabled' => env('CROWDSEC_AUDIT_ENABLED', false),
+    'retention_days' => env('CROWDSEC_AUDIT_RETENTION_DAYS', 365),
+],
 ```
 
 #### Automated Cleanup in Production

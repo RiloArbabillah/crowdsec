@@ -3,6 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec\Console\Commands;
 
 use Illuminate\Console\Command;
+use RiloArbabillah\LaravelCrowdSec\Models\AuditLog;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -29,6 +30,7 @@ class CrowdSecCleanup extends Command
         $cleanupExpired = ! $anySpecific || $this->option('expired');
         $cleanupEvents = ! $anySpecific || $this->option('old-events');
         $cleanupBehaviors = ! $anySpecific || $this->option('old-behaviors');
+        $cleanupAuditLogs = ! $anySpecific || $this->shouldCleanupAuditLogs();
 
         $totalCleaned = 0;
 
@@ -71,6 +73,21 @@ class CrowdSecCleanup extends Command
             }
         }
 
+        // Clean up old audit logs based on retention settings
+        if ($cleanupAuditLogs) {
+            $retentionDays = (int) config('crowdsec-scenarios.audit.retention_days', 365);
+            $cutoff = now()->subDays($retentionDays);
+            $oldAuditLogCount = AuditLog::where('created_at', '<', $cutoff)->count();
+
+            if ($dryRun) {
+                $this->info("[DRY RUN] Would delete {$oldAuditLogCount} audit log records older than {$retentionDays} days");
+            } else {
+                $deleted = AuditLog::where('created_at', '<', $cutoff)->delete();
+                $this->info("Deleted {$deleted} audit log records older than {$retentionDays} days");
+                $totalCleaned += $deleted;
+            }
+        }
+
         if ($dryRun) {
             $this->warn('No changes were made (dry run mode)');
         } else {
@@ -78,5 +95,10 @@ class CrowdSecCleanup extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    protected function shouldCleanupAuditLogs(): bool
+    {
+        return (bool) config('crowdsec-scenarios.audit.enabled', false);
     }
 }
