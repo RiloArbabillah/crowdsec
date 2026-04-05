@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use RiloArbabillah\LaravelCrowdSec\Http\Controllers\CrowdSecApiController;
 
 Route::prefix('api/crowdsec')
-    ->middleware(config('crowdsec-scenarios.api.middleware', ['api']))
+    ->middleware(config('crowdsec-scenarios.api.middleware', ['api', 'auth:sanctum']))
     ->group(function () {
         Route::get('/stats', [CrowdSecApiController::class, 'stats']);
         Route::get('/events', [CrowdSecApiController::class, 'events']);

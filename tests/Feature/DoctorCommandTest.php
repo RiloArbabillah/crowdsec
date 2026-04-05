@@ -148,7 +148,7 @@ class DoctorCommandTest extends TestCase
 
         $this->artisan('crowdsec:doctor')
             ->expectsOutputToContain('Slack channel enabled but no webhook URL configured')
-            ->assertSuccessful();
+            ->assertFailed();
     }
 
     public function test_doctor_command_detects_api_without_auth(): void
@@ -160,7 +160,50 @@ class DoctorCommandTest extends TestCase
 
         $this->artisan('crowdsec:doctor')
             ->expectsOutputToContain('without auth middleware')
+            ->assertFailed();
+    }
+
+    public function test_doctor_command_detects_metrics_without_protection(): void
+    {
+        config([
+            'crowdsec-scenarios.metrics.enabled' => true,
+            'crowdsec-scenarios.metrics.middleware' => ['api'],
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('without auth or signed middleware')
+            ->assertFailed();
+    }
+
+    public function test_doctor_command_accepts_signed_metrics_route(): void
+    {
+        config([
+            'crowdsec-scenarios.metrics.enabled' => true,
+            'crowdsec-scenarios.metrics.middleware' => ['signed'],
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('Metrics')
             ->assertSuccessful();
+    }
+
+    public function test_doctor_command_detects_dashboard_without_auth(): void
+    {
+        config([
+            'crowdsec-scenarios.dashboard.enabled' => true,
+            'crowdsec-scenarios.dashboard.middleware' => ['web'],
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('without auth middleware')
+            ->assertFailed();
+    }
+
+    public function test_secure_endpoint_defaults_require_authentication(): void
+    {
+        $this->assertSame(['api', 'auth:sanctum'], config('crowdsec-scenarios.api.middleware'));
+        $this->assertSame(['web', 'auth'], config('crowdsec-scenarios.metrics.middleware'));
+        $this->assertSame(['web', 'auth'], config('crowdsec-scenarios.dashboard.middleware'));
     }
 
     public function test_doctor_command_score_is_valid_range(): void
@@ -181,6 +224,6 @@ class DoctorCommandTest extends TestCase
         $doctor->runAllChecks();
 
         $results = $doctor->getResults();
-        $this->assertGreaterThanOrEqual(12, count($results), 'Should run at least 12 health checks');
+        $this->assertGreaterThanOrEqual(13, count($results), 'Should run at least 13 health checks');
     }
 }
