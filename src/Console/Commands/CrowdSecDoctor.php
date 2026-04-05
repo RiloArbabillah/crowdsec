@@ -162,19 +162,42 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $channels = config('crowdsec-scenarios.notifications.channels', []);
-        $recipients = config('crowdsec-scenarios.notifications.recipients', []);
-        $recipients = array_filter($recipients);
+        $channels = collect(config('crowdsec-scenarios.notifications.channels', ['mail']))
+            ->map(fn ($channel) => strtolower(trim((string) $channel)))
+            ->filter()
+            ->unique()
+            ->values();
 
-        if (empty($recipients)) {
-            $this->addResult('Notifications', 'fail', 'Enabled but no recipients configured', 10);
+        if ($channels->isEmpty()) {
+            $this->addResult('Notifications', 'fail', 'Enabled but no notification channels configured', 10);
+            return;
+        }
+
+        $recipients = collect(config('crowdsec-scenarios.notifications.recipients', []))
+            ->map(fn ($recipient) => trim((string) $recipient))
+            ->filter()
+            ->values();
+
+        $issues = [];
+
+        if ($channels->contains('mail') && $recipients->isEmpty()) {
+            $issues[] = 'Mail channel enabled but no recipients configured';
+        }
+
+        if ($channels->contains('slack')
+            && trim((string) config('crowdsec-scenarios.notifications.slack_webhook_url', '')) === '') {
+            $issues[] = 'Slack channel enabled but no webhook URL configured';
+        }
+
+        if (! empty($issues)) {
+            $this->addResult('Notifications', 'fail', implode(' — ', $issues), 10);
             return;
         }
 
         $this->addResult(
             'Notifications',
             'pass',
-            'Channels: ' . implode(', ', $channels) . ' — ' . count($recipients) . ' recipient(s)',
+            'Channels: ' . $channels->implode(', ') . ' — ' . $recipients->count() . ' mail recipient(s)',
         );
     }
 

@@ -59,6 +59,32 @@ This will create `config/crowdsec-scenarios.php` where you can:
 - Set block durations per severity
 - Whitelist IPs that should never be blocked
 
+### Notification Channels
+
+CrowdSec can send on-demand security alerts through email and Slack. Mail delivery uses
+the `notifications.recipients` list, while Slack delivery requires an incoming webhook URL.
+
+```php
+'notifications' => [
+    'enabled' => env('CROWDSEC_NOTIFY_ENABLED', false),
+    'channels' => ['mail', 'slack'],
+    'severity_threshold' => 'high',
+    'rate_limit_minutes' => 5,
+    'recipients' => ['security@example.com'],
+    'slack_webhook_url' => env('CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL', ''),
+],
+```
+
+```bash
+CROWDSEC_NOTIFY_ENABLED=true
+CROWDSEC_NOTIFY_CHANNELS=mail,slack
+CROWDSEC_NOTIFY_RECIPIENTS=security@example.com,ops@example.com
+CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/XXXX
+```
+
+If you enable the `slack` channel without a webhook URL, `php artisan crowdsec:doctor`
+will report the configuration as invalid.
+
 ### Enabling/Disabling the Package
 
 You can toggle the package on or off via configuration:

@@ -137,6 +137,20 @@ class DoctorCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_doctor_command_detects_slack_without_webhook(): void
+    {
+        config([
+            'crowdsec-scenarios.notifications.enabled' => true,
+            'crowdsec-scenarios.notifications.channels' => ['slack'],
+            'crowdsec-scenarios.notifications.recipients' => [],
+            'crowdsec-scenarios.notifications.slack_webhook_url' => '',
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('Slack channel enabled but no webhook URL configured')
+            ->assertSuccessful();
+    }
+
     public function test_doctor_command_detects_api_without_auth(): void
     {
         config([

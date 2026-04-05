@@ -159,6 +159,22 @@ class NewFeaturesTest extends TestCase
         $this->assertNotNull($mail);
     }
 
+    public function test_security_alert_notification_via_mail_and_slack(): void
+    {
+        Config::set('crowdsec-scenarios.notifications.channels', ['mail', 'slack']);
+
+        $notification = new SecurityAlertNotification(
+            ip: '10.0.0.6',
+            reason: 'XSS detected',
+            severity: 'high',
+            context: ['event_type' => 'xss'],
+        );
+
+        $channels = $notification->via(new \stdClass());
+
+        $this->assertSame(['mail', 'slack'], $channels);
+    }
+
     public function test_security_alert_notification_to_array(): void
     {
         $notification = new SecurityAlertNotification(
@@ -227,6 +243,76 @@ class NewFeaturesTest extends TestCase
             SecurityAlertNotification::class,
             1
         );
+    }
+
+    public function test_send_security_alert_routes_mail_and_slack_channels(): void
+    {
+        Notification::fake();
+        Cache::flush();
+        Config::set('crowdsec-scenarios.notifications', [
+            'enabled' => true,
+            'channels' => ['mail', 'slack'],
+            'severity_threshold' => 'medium',
+            'recipients' => ['admin@example.com'],
+            'slack_webhook_url' => 'https://hooks.slack.test/services/T000/B000/XXXX',
+            'rate_limit_minutes' => 5,
+        ]);
+
+        $event = new IpBlocked('10.0.0.11', 'SQLi', 1440, 1, 'sql_injection');
+        $listener = new SendSecurityAlert();
+        $listener->handle($event);
+
+        Notification::assertSentOnDemand(SecurityAlertNotification::class, function ($notification, $channels, $notifiable) {
+            return $notification->ip === '10.0.0.11'
+                && $channels === ['mail', 'slack']
+                && $notifiable->routeNotificationFor('mail') === ['admin@example.com']
+                && $notifiable->routeNotificationFor('slack') === 'https://hooks.slack.test/services/T000/B000/XXXX';
+        });
+    }
+
+    public function test_send_security_alert_routes_slack_only_channel(): void
+    {
+        Notification::fake();
+        Cache::flush();
+        Config::set('crowdsec-scenarios.notifications', [
+            'enabled' => true,
+            'channels' => ['slack'],
+            'severity_threshold' => 'medium',
+            'recipients' => [],
+            'slack_webhook_url' => 'https://hooks.slack.test/services/T000/B000/SLACK',
+            'rate_limit_minutes' => 5,
+        ]);
+
+        $event = new IpBlocked('10.0.0.12', 'SQLi', 1440, 1, 'sql_injection');
+        $listener = new SendSecurityAlert();
+        $listener->handle($event);
+
+        Notification::assertSentOnDemand(SecurityAlertNotification::class, function ($notification, $channels, $notifiable) {
+            return $notification->ip === '10.0.0.12'
+                && $channels === ['slack']
+                && $notifiable->routeNotificationFor('mail') === null
+                && $notifiable->routeNotificationFor('slack') === 'https://hooks.slack.test/services/T000/B000/SLACK';
+        });
+    }
+
+    public function test_send_security_alert_skips_slack_without_webhook_when_no_mail_route_exists(): void
+    {
+        Notification::fake();
+        Cache::flush();
+        Config::set('crowdsec-scenarios.notifications', [
+            'enabled' => true,
+            'channels' => ['slack'],
+            'severity_threshold' => 'medium',
+            'recipients' => [],
+            'slack_webhook_url' => '',
+            'rate_limit_minutes' => 5,
+        ]);
+
+        $event = new IpBlocked('10.0.0.13', 'SQLi', 1440, 1, 'sql_injection');
+        $listener = new SendSecurityAlert();
+        $listener->handle($event);
+
+        Notification::assertNothingSent();
     }
 
     // =========================================================================
