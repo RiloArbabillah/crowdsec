@@ -52,11 +52,10 @@ class MetricsEndpointTest extends TestCase
 
     public function test_metrics_contains_threats_total(): void
     {
-        SecurityEvent::create([
+        $this->createSecurityEvent([
             'ip' => '1.2.3.4',
             'event_type' => 'sql_injection',
             'severity' => 'critical',
-            'description' => 'test',
         ]);
 
         $response = $this->get('/crowdsec/metrics');
@@ -69,10 +68,17 @@ class MetricsEndpointTest extends TestCase
 
     public function test_metrics_contains_blocked_ips_active(): void
     {
-        BlockedIp::create([
+        $this->createBlockedIp([
             'ip' => '5.6.7.8',
             'reason' => 'test',
-            'blocked_until' => now()->addHour(),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->createBlockedIp([
+            'ip' => '5.6.7.9',
+            'reason' => 'inactive test',
+            'expires_at' => now()->addHour(),
+            'is_active' => false,
         ]);
 
         $response = $this->get('/crowdsec/metrics');
@@ -84,11 +90,14 @@ class MetricsEndpointTest extends TestCase
 
     public function test_metrics_contains_blocked_ips_total(): void
     {
+        $this->createBlockedIp(['ip' => '5.6.7.8']);
+        $this->createBlockedIp(['ip' => '5.6.7.9']);
+
         $response = $this->get('/crowdsec/metrics');
         $content = $response->getContent();
 
         $this->assertStringContainsString('# TYPE crowdsec_blocked_ips_total counter', $content);
-        $this->assertStringContainsString('crowdsec_blocked_ips_total', $content);
+        $this->assertStringContainsString('crowdsec_blocked_ips_total 2', $content);
     }
 
     public function test_metrics_contains_tracked_ips(): void
@@ -144,11 +153,10 @@ class MetricsEndpointTest extends TestCase
 
     public function test_metrics_labels_are_sanitized(): void
     {
-        SecurityEvent::create([
+        $this->createSecurityEvent([
             'ip' => '1.1.1.1',
             'event_type' => 'xss-attack/reflected',
             'severity' => 'high',
-            'description' => 'test',
         ]);
 
         $response = $this->get('/crowdsec/metrics');
@@ -171,23 +179,20 @@ class MetricsEndpointTest extends TestCase
 
     public function test_metrics_multiple_threat_types(): void
     {
-        SecurityEvent::create([
+        $this->createSecurityEvent([
             'ip' => '1.1.1.1',
             'event_type' => 'sql_injection',
             'severity' => 'critical',
-            'description' => 'test',
         ]);
-        SecurityEvent::create([
+        $this->createSecurityEvent([
             'ip' => '2.2.2.2',
             'event_type' => 'xss',
             'severity' => 'high',
-            'description' => 'test',
         ]);
-        SecurityEvent::create([
+        $this->createSecurityEvent([
             'ip' => '3.3.3.3',
             'event_type' => 'sql_injection',
             'severity' => 'critical',
-            'description' => 'test',
         ]);
 
         $response = $this->get('/crowdsec/metrics');
@@ -195,5 +200,28 @@ class MetricsEndpointTest extends TestCase
 
         $this->assertStringContainsString('crowdsec_threats_total{type="sql_injection",severity="critical"} 2', $content);
         $this->assertStringContainsString('crowdsec_threats_total{type="xss",severity="high"} 1', $content);
+    }
+
+    private function createSecurityEvent(array $attributes = []): SecurityEvent
+    {
+        return SecurityEvent::create(array_merge([
+            'ip' => '127.0.0.1',
+            'event_type' => 'sql_injection',
+            'severity' => 'high',
+            'request_path' => '/test',
+            'request_data' => ['source' => 'metrics-test'],
+            'matched_patterns' => ['test-pattern'],
+        ], $attributes));
+    }
+
+    private function createBlockedIp(array $attributes = []): BlockedIp
+    {
+        return BlockedIp::create(array_merge([
+            'ip' => '127.0.0.1',
+            'reason' => 'test block',
+            'event_type' => 'manual',
+            'expires_at' => now()->addHour(),
+            'is_active' => true,
+        ], $attributes));
     }
 }
