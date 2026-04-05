@@ -2,10 +2,14 @@
 
 [![Tests](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml/badge.svg)](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/packagist/php-v/rilo-arbabillah/laravel-crowdsec.svg)](https://packagist.org/packages/rilo-arbabillah/laravel-crowdsec)
-[![Laravel Version](https://img.shields.io/packagist/dependency-v/rilo-arbabillah/laravel-crowdsec/laravel.svg)](https://laravel.com)
 [![License](https://img.shields.io/packagist/license/rilo-arbabillah/laravel-crowdsec.svg)](LICENSE)
 
 A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package for Laravel applications. This package provides real-time threat detection and IP blocking based on WAF patterns and behavior analysis.
+
+## Release Status
+
+- Stable Packagist release: `1.0.0` with Laravel 10/11 compatibility
+- Current `master` branch / next `1.0.x` tag: Laravel 10/11/12 compatibility plus the latest hardening and CI updates
 
 ## Features
 
@@ -25,12 +29,13 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 - **CLI Commands**: Statistics, cleanup, and export utilities
 - **Facade API**: Easy programmatic access to all features
 - **Auto-migrations**: Database tables created automatically
-- **CI Pipeline**: GitHub Actions with PHP 8.1/8.2/8.3 × Laravel 10.x/11.x matrix
+- **CI Pipeline**: GitHub Actions with PHP 8.1/8.2/8.3 × Laravel 10.x/11.x/12.x plus a PHPStan quality gate
 
 ## Requirements
 
 - PHP ^8.1
-- Laravel ^10.0 or ^11.0
+- Stable tag `1.0.0`: Laravel ^10.0 or ^11.0
+- Current `master`: Laravel ^10.0 or ^11.0 or ^12.0
 - MySQL/PostgreSQL/SQLite (any Laravel-supported database)
 
 ## Installation
@@ -42,6 +47,8 @@ composer require rilo-arbabillah/laravel-crowdsec
 ```
 
 The package will automatically register its service provider and facade.
+
+> Note: Laravel 12 support is already available on `master` and will be included in the next `1.0.x` tag. The latest Packagist stable tag is still `1.0.0`.
 
 ## Configuration
 

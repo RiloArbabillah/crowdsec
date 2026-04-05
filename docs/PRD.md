@@ -5,10 +5,10 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.0.0-beta                         |
+| **Version**      | 1.0.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-03-11                         |
+| **Last Updated** | 2026-04-05                         |
 
 ---
 
@@ -106,7 +106,7 @@ Aplikasi Laravel rentan terhadap serangan web yang umum seperti **SQL Injection,
 | Enable/disable via env variable                | ✅ Implemented |
 | Auto-migration                                 | ✅ Implemented |
 
-### ✅ Added in v1.0-beta
+### ✅ Finalized for the v1.0 stable release
 
 | Feature                                        | Status         |
 | ---------------------------------------------- | -------------- |
@@ -412,9 +412,10 @@ routes/
 
 | Dependency                 | Type    | Notes                   |
 | -------------------------- | ------- | ----------------------- |
-| `illuminate/*` (10.x/11.x) | Runtime | Core Laravel components |
+| `illuminate/*` (10.x/11.x/12.x) | Runtime | Core Laravel components |
 | `orchestra/testbench`      | Dev     | Testing framework       |
 | `phpunit/phpunit`          | Dev     | Test runner             |
+| `phpstan/phpstan`          | Dev     | Static analysis gate    |
 | Database (any)             | Runtime | Untuk 3 tabel security  |
 
 ### Risks
@@ -460,7 +461,7 @@ routes/
 | Custom pattern plugin system        | Should Have | ✅ Done  |
 | Honeypot route traps                | Could Have  | ✅ Done  |
 | Per-route rate limiting             | Could Have  | ✅ Done  |
-| Packagist release                   | Must Have   | ⬜ To Do |
+| Packagist release                   | Must Have   | ✅ Done |
 
 ### Phase 3: v1.1.0+ ✅ COMPLETED
 
