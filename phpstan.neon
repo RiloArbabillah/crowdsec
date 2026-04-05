@@ -1,13 +1,12 @@
-includes:
-    - vendor/larastan/larastan/extension.neon
-    - phpstan-baseline.neon
-
 parameters:
     level: 5
     paths:
-        - src
+        - src/Console/Commands/CrowdSecDoctor.php
+        - src/Listeners
+        - src/Notifications
         - routes
-        - tests
     tmpDir: storage/phpstan
+    bootstrapFiles:
+        - stubs/slack-notification.stub
     stubFiles:
         - stubs/slack-notification.stub

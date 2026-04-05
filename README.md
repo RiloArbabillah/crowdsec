@@ -546,6 +546,9 @@ composer analyse
 ```
 
 GitHub Actions now runs both PHPUnit and PHPStan as part of the default CI pipeline.
+The static analysis gate currently focuses on route files, notification delivery,
+and the `crowdsec:doctor` command to keep the check lightweight across the supported
+Laravel version matrix.
 
 ## Security
 

@@ -26,7 +26,6 @@
     "require-dev": {
         "guzzlehttp/guzzle": "^7.10",
         "guzzlehttp/psr7": "^2.9",
-        "larastan/larastan": "^2.9",
         "orchestra/testbench": "^8.0|^9.0|^10.0",
         "phpstan/phpstan": "^1.12",
         "phpunit/phpunit": "^10.0|^11.0"
