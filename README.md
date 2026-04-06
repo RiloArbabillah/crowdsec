@@ -8,8 +8,8 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 
 ## Release Status
 
-- Stable Packagist release: `1.0.0` with Laravel 10/11 compatibility
-- Current `master` branch / next `1.0.x` tag: Laravel 10/11/12 compatibility plus the latest hardening and CI updates
+- Latest stable Packagist release: `v1.0.2`
+- Stable compatibility: Laravel `^10.0|^11.0|^12.0` with the current hardening and CI updates
 
 ## Features
 
@@ -34,8 +34,7 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 ## Requirements
 
 - PHP ^8.1
-- Stable tag `1.0.0`: Laravel ^10.0 or ^11.0
-- Current `master`: Laravel ^10.0 or ^11.0 or ^12.0
+- Laravel ^10.0 or ^11.0 or ^12.0
 - MySQL/PostgreSQL/SQLite (any Laravel-supported database)
 
 ## Installation
@@ -47,8 +46,6 @@ composer require rilo-arbabillah/laravel-crowdsec
 ```
 
 The package will automatically register its service provider and facade.
-
-> Note: Laravel 12 support is already available on `master` and will be included in the next `1.0.x` tag. The latest Packagist stable tag is still `1.0.0`.
 
 ## Configuration
 

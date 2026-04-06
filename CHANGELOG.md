@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-06
+
+### Fixed
+
+- **Packagist README** — align the published README copy with the current stable release metadata and Laravel 10/11/12 support
+
 ## [1.0.1] - 2026-04-05
 
 ### Added
