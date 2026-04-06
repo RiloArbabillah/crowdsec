@@ -7,22 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-05
+
 ### Added
 
+- **Laravel 12 Compatibility** — package constraints and CI matrix now cover Laravel 10.x/11.x/12.x
+- **Audit Log Compliance Trail** — immutable audit log records for block and unblock actions
+- **Doctor Command** — `crowdsec:doctor` health check for configuration and production readiness
+- **Metrics Endpoint** — Prometheus/OpenMetrics export for operational monitoring
 - **Static Analysis Gate** — `composer analyse` plus a dedicated GitHub Actions quality job
 
 ### Changed
 
-- **Laravel Compatibility** — current `master` branch now tests against Laravel 10.x/11.x/12.x
 - **Optional Endpoint Defaults** — API, metrics, and dashboard now default to authenticated middleware
-- **Release Docs** — README, PRD, and progress notes now distinguish the published `1.0.0` tag from the current `1.0.x` maintenance branch
+- **Release Docs** — README, PRD, and progress notes now distinguish the published Packagist tag from the active maintenance branch
+- **Cleanup Behavior** — `crowdsec:cleanup` now prunes audit logs based on `audit.retention_days`
 
 ### Fixed
 
 - **Slack Notifications** — on-demand alerts now route correctly through configured mail and Slack channels
 - **Metrics Tests** — fixtures now match the current schema and model contracts
-
-> Note: The latest Packagist stable tag is still `1.0.0`. Laravel 12 compatibility and the changes listed in `Unreleased` are currently available on `master` and will ship in the next `1.0.x` tag.
+- **Audit Retention** — configured audit retention is now enforced instead of remaining a docs-only setting
 
 ## [1.0.0] - 2026-03-11
 
