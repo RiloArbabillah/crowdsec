@@ -12,7 +12,7 @@
         h1 span { font-size: 28px; }
         .grid { display: grid; gap: 16px; margin-bottom: 24px; }
         .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); }
         .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
         .card h2 { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
         .card .value { font-size: 32px; font-weight: 700; }
@@ -32,6 +32,7 @@
         .text-yellow { color: #fbbf24; }
         .text-blue { color: #60a5fa; }
         .footer { text-align: center; padding: 24px; color: #475569; font-size: 12px; }
+        .table-wrap { overflow-x: auto; }
     </style>
 </head>
 <body>
@@ -82,23 +83,26 @@
             {{-- Recent Events --}}
             <div class="card">
                 <h2>Recent Events</h2>
-                <table>
+                <div class="table-wrap"><table>
                     <thead>
-                        <tr><th>IP</th><th>Type</th><th>Severity</th><th>Time</th></tr>
+                        <tr><th>IP</th><th>Type</th><th>Action</th><th>Status</th><th>Country</th><th>Client</th><th>Time</th></tr>
                     </thead>
                     <tbody>
                         @forelse($recentEvents as $event)
                         <tr>
                             <td>{{ $event->ip }}</td>
                             <td>{{ $event->event_type ?? '-' }}</td>
-                            <td><span class="badge badge-{{ $event->severity ?? 'medium' }}">{{ $event->severity ?? '-' }}</span></td>
+                            <td><span class="badge badge-{{ $event->severity ?? 'medium' }}">{{ $event->action_taken ?? '-' }}</span></td>
+                            <td>{{ $event->response_status ?? '-' }}</td>
+                            <td>{{ $event->country_code ?? '-' }}</td>
+                            <td>{{ $event->device_type ?? $event->browser ?? '-' }}</td>
                             <td>{{ $event->created_at->diffForHumans() }}</td>
                         </tr>
                         @empty
-                        <tr><td colspan="4" style="text-align:center; color:#64748b;">No events recorded</td></tr>
+                        <tr><td colspan="7" style="text-align:center; color:#64748b;">No events recorded</td></tr>
                         @endforelse
                     </tbody>
-                </table>
+                </table></div>
             </div>
 
             {{-- Blocked IPs --}}
@@ -122,6 +126,37 @@
                 </table>
             </div>
         </div>
+
+        @if($topCountries->isNotEmpty() || $deviceBreakdown->isNotEmpty())
+        <div class="grid grid-2">
+            <div class="card">
+                <h2>Top Source Countries (Last 7 Days)</h2>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>Country</th><th>Events</th></tr></thead>
+                    <tbody>
+                        @forelse($topCountries as $country)
+                        <tr><td>{{ $country->country_code }}</td><td>{{ $country->count }}</td></tr>
+                        @empty
+                        <tr><td colspan="2" style="text-align:center; color:#64748b;">No country data</td></tr>
+                        @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+            <div class="card">
+                <h2>Device Types (Last 7 Days)</h2>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>Device</th><th>Events</th></tr></thead>
+                    <tbody>
+                        @forelse($deviceBreakdown as $device)
+                        <tr><td>{{ $device->device_type }}</td><td>{{ $device->count }}</td></tr>
+                        @empty
+                        <tr><td colspan="2" style="text-align:center; color:#64748b;">No device data</td></tr>
+                        @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+        @endif
 
         {{-- Top Attackers --}}
         @if($topAttackers->isNotEmpty())

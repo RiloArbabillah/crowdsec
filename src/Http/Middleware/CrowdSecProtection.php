@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use RiloArbabillah\LaravelCrowdSec\Events\BehaviorThresholdExceeded;
 use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
+use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
+use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecProtection
@@ -29,17 +31,38 @@ class CrowdSecProtection
             return $next($request);
         }
 
-        // Wrap everything in try-catch so WAF errors never crash the application
+        $startedAtNanoseconds = hrtime(true);
+        $downstreamInvoked = false;
+        $downstreamResponse = null;
+        $guardedNext = function (Request $request) use ($next, &$downstreamInvoked, &$downstreamResponse): Response {
+            $downstreamInvoked = true;
+            $downstreamResponse = $next($request);
+
+            return $downstreamResponse;
+        };
+
+        // Wrap WAF operations so package errors fail open without invoking the app twice.
         try {
-            return $this->processRequest($request, $next);
+            return $this->processRequest($request, $guardedNext, $startedAtNanoseconds);
         } catch (\Throwable $e) {
+            if ($downstreamInvoked && ! $downstreamResponse instanceof Response) {
+                // Exceptions from the application are not CrowdSec failures.
+                throw $e;
+            }
+
             Log::error('CrowdSec: Middleware error — request allowed through', [
                 'error' => $e->getMessage(),
                 'ip' => $request->ip(),
                 'path' => $request->path(),
             ]);
 
-            // Fail open: allow request through if WAF encounters an error
+            if ($downstreamInvoked) {
+                if ($downstreamResponse instanceof Response) {
+                    return $downstreamResponse;
+                }
+            }
+
+            // Fail open only when CrowdSec failed before invoking the application.
             return $next($request);
         }
     }
@@ -47,9 +70,10 @@ class CrowdSecProtection
     /**
      * Process the request through all security checks.
      */
-    protected function processRequest(Request $request, Closure $next): Response
+    protected function processRequest(Request $request, Closure $next, int $startedAtNanoseconds): Response
     {
         $ip = $request->ip() ?? 'unknown';
+        $securityEvent = null;
 
         // 1. Skip for whitelisted IPs (performance)
         if ($this->isWhitelisted($ip)) {
@@ -99,8 +123,8 @@ class CrowdSecProtection
         $threats = $this->service->analyzeRequest($request);
 
         if (! empty($threats)) {
-            // Log the event
-            $this->service->logEvent($ip, $threats, $request);
+            // Persist detection first. Response and final decision are filled in later.
+            $securityEvent = $this->logEventSafely($ip, $threats, $request);
 
             // Dispatch ThreatDetected event
             $severity = $this->service->getMaxSeverity(array_column($threats, 'severity'));
@@ -116,9 +140,17 @@ class CrowdSecProtection
             if (! empty($blockingThreats)) {
                 $reason = collect($blockingThreats)->pluck('type')->unique()->implode(', ');
                 $firstType = $blockingThreats[array_key_first($blockingThreats)]['type'] ?? 'security_threat';
-                $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
+                $blockedIp = $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
+                $response = $this->blockedResponse($request, 'Malicious pattern detected');
+                $this->finalizeEventSafely(
+                    $securityEvent,
+                    $response,
+                    $startedAtNanoseconds,
+                    'blocked',
+                    $blockedIp
+                );
 
-                return $this->blockedResponse($request, 'Malicious pattern detected');
+                return $response;
             }
 
             // Low severity: logged + scored above, continue processing
@@ -141,19 +173,77 @@ class CrowdSecProtection
                 );
             }
 
-            $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
+            $blockedIp = $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
+            $response = $this->blockedResponse($request, 'Rate limit exceeded');
+            $this->finalizeEventSafely(
+                $securityEvent,
+                $response,
+                $startedAtNanoseconds,
+                'blocked',
+                $blockedIp
+            );
 
-            return $this->blockedResponse($request, 'Rate limit exceeded');
+            return $response;
         }
 
         // 10. Process the request and track 404 responses
         $response = $next($request);
+
+        $this->finalizeEventSafely(
+            $securityEvent,
+            $response,
+            $startedAtNanoseconds,
+            'allowed_scored'
+        );
 
         if ($response->getStatusCode() === 404) {
             $this->service->track404($ip);
         }
 
         return $response;
+    }
+
+    protected function logEventSafely(string $ip, array $threats, Request $request): ?SecurityEvent
+    {
+        try {
+            return $this->service->logEvent($ip, $threats, $request);
+        } catch (\Throwable $e) {
+            Log::error('CrowdSec: Failed to persist security event', [
+                'error' => $e->getMessage(),
+                'ip' => $ip,
+                'path' => $request->path(),
+            ]);
+
+            return null;
+        }
+    }
+
+    protected function finalizeEventSafely(
+        ?SecurityEvent $event,
+        Response $response,
+        int $startedAtNanoseconds,
+        string $actionTaken,
+        ?BlockedIp $blockedIp = null
+    ): void
+    {
+        if ($event === null) {
+            return;
+        }
+
+        try {
+            $this->service->finalizeEvent(
+                $event,
+                $response,
+                $startedAtNanoseconds,
+                $actionTaken,
+                $blockedIp
+            );
+        } catch (\Throwable $e) {
+            Log::error('CrowdSec: Failed to finalize security event context', [
+                'error' => $e->getMessage(),
+                'event_id' => $event->getKey(),
+            ]);
+        }
     }
 
     /**

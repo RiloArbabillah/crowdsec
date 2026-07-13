@@ -485,7 +485,31 @@ return [
         'enabled' => env('CROWDSEC_GEOIP_ENABLED', false),
         'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ip-api'), // 'ip-api', 'custom'
         'cache_ttl' => 86400, // Cache GeoIP results for 24 hours
+        'timeout' => env('CROWDSEC_GEOIP_TIMEOUT', 2),
         'custom_callback' => null, // callable for custom provider
+    ],
+
+    // =========================================================================
+    // SECURITY EVENT CONTEXT
+    // =========================================================================
+
+    'event_context' => [
+        'request_id_header' => env('CROWDSEC_REQUEST_ID_HEADER', 'X-Request-ID'),
+        'parse_user_agent' => env('CROWDSEC_PARSE_USER_AGENT', true),
+        'hash_authenticated_user' => env('CROWDSEC_HASH_AUTHENTICATED_USER', true),
+        // Falls back to APP_KEY when empty. Set a dedicated key to keep hashes stable across app key rotation.
+        'user_hash_key' => env('CROWDSEC_USER_HASH_KEY'),
+        'redact_query_parameters' => [
+            'password',
+            'password_confirmation',
+            'token',
+            'access_token',
+            'refresh_token',
+            'api_key',
+            'secret',
+            'authorization',
+            'signature',
+        ],
     ],
 
     // =========================================================================

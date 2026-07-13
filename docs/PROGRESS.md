@@ -1,7 +1,7 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 05 Apr 2026
-> **Test suite:** 196 passed (347 assertions)
+> Last updated: 13 Jul 2026
+> **Test suite:** 207 passed (409 assertions)
 > **Next focus:** cut the next `1.0.x` patch tag so Packagist picks up the latest hardening, docs, and Laravel 12 compatibility
 
 ---
@@ -63,6 +63,8 @@
 - [x] `blocked_ips` table — IP blocks with expiration
 - [x] `ip_behaviors` table — per-IP behavior metrics
 - [x] `security_events` table — security event logs
+- [x] Security event context — request/route/content, response/action/duration, GeoIP/ASN, HMAC user, browser/OS/device
+- [x] Sensitive query, referer, cookie, authorization, dan matched-source redaction
 - [x] Auto-migration (no manual setup)
 - [x] Database indexes for performance
 
@@ -117,11 +119,12 @@
 - [x] Result caching (24h default)
 - [x] Custom callback provider support
 - [x] Private IP detection (skip lookup)
+- [x] ASN/ISP enrichment + configurable provider timeout
 
 ### REST API Endpoints
 
 - [x] `GET /api/crowdsec/stats` — overview statistics
-- [x] `GET /api/crowdsec/events` — list events (filter: severity, ip, from)
+- [x] `GET /api/crowdsec/events` — list events (filter: severity, ip, from, request ID, route, action, status, country, ASN, user hash)
 - [x] `GET /api/crowdsec/blocked` — list blocked IPs
 - [x] `POST /api/crowdsec/block` — block an IP
 - [x] `DELETE /api/crowdsec/block/{ip}` — unblock an IP
@@ -133,10 +136,11 @@
 
 - [x] `/crowdsec` — standalone dark theme dashboard (Blade, no external CSS)
 - [x] Stats cards (events today, this week, active blocks, high threat IPs)
-- [x] Recent events table (IP, type, severity, time)
+- [x] Recent events table (IP, type, action, status, country, client, time)
 - [x] Blocked IPs table (IP, reason, expires)
 - [x] Top attackers table (last 24h)
 - [x] Threat breakdown by severity (last 7 days)
+- [x] Top source countries + device type breakdown (last 7 days)
 - [x] Disabled by default (enable via `CROWDSEC_DASHBOARD_ENABLED`)
 - [x] Publishable views via `crowdsec-views` tag
 
@@ -170,6 +174,7 @@
 - [x] Notifications config (enabled, channels, severity threshold, rate limit, recipients)
 - [x] Honeypot routes config
 - [x] GeoIP config (enabled, provider, cache TTL, custom callback)
+- [x] Event context config (request ID, UA parsing, HMAC user, sensitive parameter redaction)
 - [x] API config (enabled, middleware)
 - [x] Dashboard config (enabled, path, middleware)
 
@@ -188,7 +193,8 @@
 - [x] 20 edge case tests (`EdgeCaseTest` — CIDR, escalation, body analysis, etc.)
 - [x] 8 performance benchmarks (all < 1ms target)
 - [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
-- [x] Total: **196 tests, 347 assertions**
+- [x] Security event context coverage (enforcement, privacy, API, export, GeoIP, UA, HMAC)
+- [x] Total: **207 tests, 409 assertions**
 
 ### Documentation
 
@@ -217,16 +223,16 @@
 
 | Metric                 | Value      |
 | ---------------------- | ---------- |
-| Total source files     | 22         |
-| Total lines of code    | ~2,500     |
+| Total source files     | 28         |
+| Total lines of code    | ~4,000     |
 | Attack types detected  | 15         |
 | Regex patterns         | 100+       |
 | Unit tests             | 27         |
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Total tests**        | **196**    |
-| Test assertions        | 347        |
+| **Total tests**        | **207**    |
+| Test assertions        | 409        |
 | Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
 | Package status         | Stable on Packagist |
@@ -237,6 +243,27 @@
 ## 📝 Git History
 
 ```
+793c222  chore: remove release notes temp file
+d6d81e0  docs: sync Packagist README for 1.0.2
+3f32562  chore: remove release notes temp file
+2773058  docs: prepare 1.0.1 release notes
+e76d4e4  fix: enforce audit retention cleanup (#55) (#66)
+cb07b44  chore: align release docs for v1 (#56) (#65)
+d517a26  chore: add static analysis quality gate (#60) (#64)
+6ef3079  fix: harden optional endpoint defaults (#57) (#63)
+e903852  fix: wire Slack notifications end-to-end (#58) (#62)
+0e78512  fix: align metrics test fixtures (#59) (#61)
+f7c24a6  feat: add request body deep inspection (#46) (#54)
+481d5d2  feat: add immutable audit log for compliance (#49) (#53)
+d84aea6  feat: add Prometheus/OpenMetrics metrics endpoint (#48) (#52)
+a39ae19  feat: add crowdsec:doctor health check command (#50) (#51)
+cf4ec0b  chore: add LICENSE, .gitattributes, update composer.json for Packagist
+91ed2b0  feat: add Laravel 12 compatibility support (#35) (#45)
+22bfaa3  chore: prepare v1.0.0 stable release (#38) (#44)
+b5ab47c  security: audit regex patterns for ReDoS vulnerability (#37) (#43)
+ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
+4222fc7  docs: track docs/ directory and update PRD + PROGRESS
+43758db  docs: update PRD, PROGRESS, and README with all resolved features
 6bec6f2  feat: add admin security dashboard (#12) (#33)
 d346a44  feat: add REST API endpoints for CrowdSec (#14) (#32)
 b4f2add  feat: add GeoIP lookup service (#13) (#31)
@@ -246,25 +273,4 @@ cd80167  feat: add SIEM-compatible event export command (#17) (#30)
 37e065d  feat: add custom pattern plugin system (#15) (#27)
 710a4c9  feat: add notification support (email, Slack, Telegram) (#8) (#26)
 7f9743e  feat: add Event/Listener system for threat detection (#7) (#25)
-b36ba5a  feat: add IP threat score decay over time (#9) (#24)
-6f00120  feat: add built-in scheduled cleanup registration (#10) (#23)
-ff3060a  feat: add caching layer for blocked IPs (#4) (#22)
-546d447  feat: add edge case and feature tests (#2) (#21)
-44542a7  feat: add integration tests for middleware pipeline (#1) (#20)
-6526b90  task: add performance benchmark suite (#3) (#19)
-92f2d6e  chore: setup GitHub Actions CI pipeline (#5) (#18)
-2724a48  chore: Ignore the `.agents` directory.
-9a6bdbf  docs: Add /docs and /.ai to .gitignore.
-1e2116a  feat: Enhance WAF pattern matching with multi-layer decoding
-3281c1a  feat: Add testing infrastructure, enhance middleware robustness
-0a45553  Fix duplicate event_type causing column overflow
-1759414  Set version to 1.0.0-alpha
-3eaf181  Document enabled config option in README
-ebf1071  Add enabled config option to toggle package
-754cc01  Fix login blocking by unblocking IP on successful authentication
-3b8707a  Fix login blocking by WAF patterns
-cf3eb8e  Replace all Simenawan references with RiloArbabillah
-1bf7a66  Remove Publishing to Packagist section from README
-28b51b9  Change package name to rilo-arbabillah/laravel-crowdsec
-0aca869  Change package name to RiloArbabillah/laravel-crowdsec
 ```

@@ -23,6 +23,7 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 - **Per-Route Rate Limiting**: Configurable rate limits via middleware (`crowdsec.rate:60,1`)
 - **Custom Patterns**: Register custom detection scenarios at runtime
 - **GeoIP Lookup**: IP geolocation via ip-api.com with caching
+- **Security Event Context**: Request correlation, route/response metadata, ASN/ISP, hashed user identity, and parsed client device
 - **REST API**: 6 API endpoints for programmatic management (block, unblock, check, stats, events, blocked)
 - **Admin Dashboard**: Standalone dark theme Blade dashboard (enable via config)
 - **SIEM Export**: Export events in JSON, CSV, or Syslog (RFC 5424) format
@@ -146,6 +147,41 @@ return [
     // ... detection patterns
 ];
 ```
+
+### Security Event Context
+
+Only detected security events are enriched; normal requests are not stored as access logs.
+The package records a correlation ID, named route, content metadata, response status,
+duration, enforcement action, GeoIP/ASN data, a pseudonymous user hash, and parsed
+browser/OS/device information.
+
+```php
+'event_context' => [
+    'request_id_header' => env('CROWDSEC_REQUEST_ID_HEADER', 'X-Request-ID'),
+    'parse_user_agent' => env('CROWDSEC_PARSE_USER_AGENT', true),
+    'hash_authenticated_user' => env('CROWDSEC_HASH_AUTHENTICATED_USER', true),
+    'user_hash_key' => env('CROWDSEC_USER_HASH_KEY'), // falls back to APP_KEY
+    'redact_query_parameters' => [
+        'password', 'token', 'access_token', 'refresh_token',
+        'api_key', 'secret', 'authorization', 'signature',
+    ],
+],
+
+'geoip' => [
+    'enabled' => env('CROWDSEC_GEOIP_ENABLED', false),
+    'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ip-api'),
+    'cache_ttl' => 86400,
+    'timeout' => env('CROWDSEC_GEOIP_TIMEOUT', 2),
+    'custom_callback' => null,
+],
+```
+
+`action_taken` is either `blocked` or `allowed_scored`. Query parameters configured
+for redaction, cookie matches, and authorization-related matches are never persisted
+with their raw values. User IDs are stored only as HMAC-SHA256 hashes. User-Agent,
+GeoIP, and client-provided request IDs are correlation signals and must not be treated
+as trusted device identity. Configure Laravel trusted proxies before relying on the
+recorded client IP.
 
 ## Basic Usage
 
@@ -367,7 +403,7 @@ The package creates three tables automatically via migrations:
 | ----------------- | ------------------------------------------------------------------------- |
 | `blocked_ips`     | Tracks blocked IPs with expiration and reason                             |
 | `ip_behaviors`    | Tracks per-IP metrics (request count, 404s, login attempts, threat score) |
-| `security_events` | Logs all detected security threats                                        |
+| `security_events` | Logs detected threats with request, response, network, user-hash, and client context |
 
 Tables are created when you run:
 

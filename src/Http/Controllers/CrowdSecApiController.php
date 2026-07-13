@@ -48,7 +48,21 @@ class CrowdSecApiController extends Controller
             $query->where('created_at', '>=', $from);
         }
 
-        $events = $query->paginate($request->query('per_page', 20));
+        foreach ([
+            'request_id',
+            'route_name',
+            'action_taken',
+            'country_code',
+            'asn',
+            'authenticated_user_id_hash',
+            'response_status',
+        ] as $filter) {
+            if ($request->filled($filter)) {
+                $query->where($filter, $request->query($filter));
+            }
+        }
+
+        $events = $query->paginate($this->perPage($request));
 
         return response()->json($events);
     }
@@ -64,7 +78,7 @@ class CrowdSecApiController extends Controller
             $query->where('ip', $ip);
         }
 
-        $blocked = $query->paginate($request->query('per_page', 20));
+        $blocked = $query->paginate($this->perPage($request));
 
         return response()->json($blocked);
     }
@@ -116,5 +130,13 @@ class CrowdSecApiController extends Controller
             'is_whitelisted' => $this->service->isWhitelisted($ip),
             'behavior' => IpBehavior::where('ip', $ip)->first(),
         ]);
+    }
+
+    protected function perPage(Request $request): int
+    {
+        $value = $request->query('per_page');
+        $perPage = is_scalar($value) ? (int) $value : 20;
+
+        return max(1, min(100, $perPage));
     }
 }

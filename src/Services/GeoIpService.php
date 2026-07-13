@@ -12,7 +12,7 @@ class GeoIpService
      * Lookup geo information for an IP address.
      * Uses ip-api.com (free, no key required) as default provider.
      *
-     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, isp: ?string}
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
      */
     public function lookup(string $ip): array
     {
@@ -54,9 +54,9 @@ class GeoIpService
      */
     protected function fetchFromIpApi(string $ip): array
     {
-        $response = Http::timeout(5)
+        $response = Http::timeout((int) config('crowdsec-scenarios.geoip.timeout', 2))
             ->get("http://ip-api.com/json/{$ip}", [
-                'fields' => 'status,country,countryCode,regionName,city,lat,lon,isp',
+                'fields' => 'status,country,countryCode,regionName,city,lat,lon,as,isp',
             ]);
 
         if ($response->failed() || $response->json('status') !== 'success') {
@@ -72,6 +72,7 @@ class GeoIpService
             'city' => $data['city'] ?? null,
             'lat' => $data['lat'] ?? null,
             'lon' => $data['lon'] ?? null,
+            'asn' => $this->parseAsn($data['as'] ?? null),
             'isp' => $data['isp'] ?? null,
         ];
     }
@@ -105,7 +106,21 @@ class GeoIpService
             'city' => null,
             'lat' => null,
             'lon' => null,
+            'asn' => null,
             'isp' => null,
         ];
+    }
+
+    protected function parseAsn(mixed $value): ?int
+    {
+        if (is_int($value) && $value >= 0) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/\AAS(\d+)\b/i', trim($value), $matches) === 1) {
+            return (int) $matches[1];
+        }
+
+        return is_numeric($value) && (int) $value >= 0 ? (int) $value : null;
     }
 }

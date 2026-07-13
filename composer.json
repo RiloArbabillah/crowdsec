@@ -21,7 +21,8 @@
         "illuminate/database": "^10.0|^11.0|^12.0",
         "illuminate/http": "^10.0|^11.0|^12.0",
         "illuminate/support": "^10.0|^11.0|^12.0",
-        "illuminate/console": "^10.0|^11.0|^12.0"
+        "illuminate/console": "^10.0|^11.0|^12.0",
+        "matomo/device-detector": "^6.5"
     },
     "require-dev": {
         "guzzlehttp/guzzle": "^7.10",

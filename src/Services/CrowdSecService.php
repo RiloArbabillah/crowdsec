@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
 use RiloArbabillah\LaravelCrowdSec\Events\IpBlocked;
 use RiloArbabillah\LaravelCrowdSec\Events\IpUnblocked;
 use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
@@ -44,11 +45,15 @@ class CrowdSecService
         'metrics',
         'audit',
         'dashboard',
+        'event_context',
     ];
 
-    public function __construct()
+    protected SecurityEventContextService $eventContext;
+
+    public function __construct(?SecurityEventContextService $eventContext = null)
     {
         $this->scenarios = config('crowdsec-scenarios', []);
+        $this->eventContext = $eventContext ?? app(SecurityEventContextService::class);
     }
 
     /**
@@ -558,7 +563,7 @@ class CrowdSecService
             return false;
         }
 
-        $contentLength = $request->header('Content-Length', 0);
+        $contentLength = $request->header('Content-Length') ?? 0;
 
         return (int) $contentLength > $maxLength;
     }
@@ -769,11 +774,17 @@ class CrowdSecService
     /**
      * Log a security event
      */
-    public function logEvent(string $ip, array $threats, Request $request): SecurityEvent
+    public function logEvent(
+        string $ip,
+        array $threats,
+        Request $request,
+        ?string $actionTaken = null
+    ): SecurityEvent
     {
         $eventTypes = array_unique(array_column($threats, 'type'));
         $severities = array_column($threats, 'severity');
         $maxSeverity = $this->getMaxSeverity($severities);
+        $context = $this->eventContext->collect($request);
 
         $event = SecurityEvent::create([
             'ip' => $ip,
@@ -782,16 +793,37 @@ class CrowdSecService
             'request_data' => [
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'query' => $request->getQueryString(),
+                'query' => $this->eventContext->redactQuery($request),
                 'user_agent' => $request->userAgent(),
-                'referer' => $request->header('Referer'),
+                'referer' => $this->eventContext->redactReferer($request->header('Referer')),
             ],
             'user_agent' => $request->userAgent(),
             'request_path' => $request->path(),
-            'matched_patterns' => $threats,
+            'matched_patterns' => $this->eventContext->sanitizeThreats($threats, $request),
+            'action_taken' => $actionTaken,
+            ...$context,
         ]);
 
         return $event;
+    }
+
+    public function finalizeEvent(
+        SecurityEvent $event,
+        Response $response,
+        int $startedAtNanoseconds,
+        string $actionTaken,
+        ?BlockedIp $blockedIp = null
+    ): void
+    {
+        $event->update([
+            'response_status' => $response->getStatusCode(),
+            'duration_ms' => max(0, (int) round((hrtime(true) - $startedAtNanoseconds) / 1_000_000)),
+            'action_taken' => $actionTaken,
+            'blocked_ip_id' => $blockedIp?->getKey(),
+        ]);
+
+        $requestId = $event->getAttribute('request_id');
+        $this->eventContext->addRequestIdHeader($response, is_string($requestId) ? $requestId : null);
     }
 
     /**

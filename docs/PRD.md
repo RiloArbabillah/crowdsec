@@ -8,7 +8,7 @@
 | **Version**      | 1.0.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-04-05                         |
+| **Last Updated** | 2026-07-13                         |
 
 ---
 
@@ -122,6 +122,7 @@ Aplikasi Laravel rentan terhadap serangan web yang umum seperti **SQL Injection,
 | GeoIP lookup service (ip-api.com)              | ✅ Implemented |
 | REST API endpoints (6 endpoints)               | ✅ Implemented |
 | Admin security dashboard (Blade)               | ✅ Implemented |
+| Security event context enrichment               | ✅ Implemented |
 | GitHub Actions CI pipeline                     | ✅ Implemented |
 | Integration tests (22 tests)                   | ✅ Implemented |
 | Edge case tests (20 tests)                     | ✅ Implemented |
@@ -201,8 +202,12 @@ Per-IP tracking meliputi:
 Setiap threat yang terdeteksi harus di-log dengan:
 
 - IP address, event type, severity
-- Request data (method, path, query, user agent, referer)
-- Matched patterns
+- Request data (method, path, query teredaksi, user agent, referer teredaksi)
+- Request ID, named route, content type, dan content length
+- Response status, durasi, serta keputusan `blocked` atau `allowed_scored`
+- Country code, ASN/ISP jika GeoIP aktif
+- HMAC user identifier serta browser, OS, dan device type
+- Matched patterns yang meredaksi cookie, authorization, dan field sensitif
 
 ### FR-07: CLI Commands
 
@@ -242,18 +247,18 @@ Setiap threat yang terdeteksi harus di-log dengan:
 
 ### FR-14: GeoIP Lookup
 
-- `GeoIpService` — ip-api.com provider, 24h cache, custom callback
+- `GeoIpService` — ip-api.com provider, country/ASN/ISP, 24h cache, timeout, custom callback
 
 ### FR-15: REST API
 
-6 endpoints: stats, events, blocked, block, unblock, check
+6 endpoints: stats, events, blocked, block, unblock, check. Event dapat difilter berdasarkan request ID, route, action, response status, country, ASN, dan user hash.
 
 - Disabled by default, configurable middleware
 
 ### FR-16: Admin Dashboard
 
 - Standalone Blade dashboard (dark theme, no external deps)
-- Stats cards, events table, blocked IPs, top attackers, threat breakdown
+- Stats cards, enriched events table, blocked IPs, top attackers, threat breakdown, top countries, dan device types
 
 ### FR-08: Facade API
 
@@ -269,10 +274,10 @@ Public API melalui `CrowdSec` facade:
 | Aspect              | Requirement                                                        |
 | ------------------- | ------------------------------------------------------------------ |
 | **Performance**     | Middleware overhead < 5ms per request                              |
-| **Reliability**     | Fail-open — WAF error TIDAK boleh crash aplikasi                   |
-| **Compatibility**   | Laravel 10.x & 11.x, PHP 8.1+                                      |
+| **Reliability**     | Fail-open; telemetry tidak mengubah enforcement dan downstream hanya dipanggil sekali |
+| **Compatibility**   | Laravel 10.x, 11.x, 12.x, PHP 8.1+                                 |
 | **Database**        | MySQL, PostgreSQL, SQLite (semua yang didukung Laravel)            |
-| **Security**        | Patterns harus tahan terhadap encoding bypass                      |
+| **Security**        | Tahan encoding bypass; secret request dan raw user ID tidak dipersisten |
 | **Maintainability** | Configurable patterns — bisa ditambah tanpa ubah kode              |
 | **Testing**         | Unit test untuk semua attack detection + false positive prevention |
 
@@ -318,6 +323,20 @@ erDiagram
         varchar request_path
         json matched_patterns
         bigint blocked_ip_id FK
+        varchar request_id
+        varchar route_name
+        varchar content_type
+        bigint content_length
+        smallint response_status
+        int duration_ms
+        varchar action_taken
+        char country_code
+        bigint asn
+        varchar isp
+        char authenticated_user_id_hash
+        varchar browser
+        varchar os
+        varchar device_type
         timestamps created_at
     }
 
@@ -471,6 +490,7 @@ routes/
 | SIEM export (JSON, CSV, Syslog)    | Could Have | ✅ Done   |
 | GeoIP lookup service               | Could Have | ✅ Done   |
 | REST API (6 endpoints)             | Could Have | ✅ Done   |
+| Security event context enrichment  | Could Have | ✅ Done   |
 | Distributed blocklist sharing      | Won't Have | ⬜ Future |
 
 ---
@@ -516,6 +536,14 @@ routes/
 - [x] WAF error does NOT crash application (fail-open)
 - [x] Package can be disabled via config
 - [x] Whitelisted IPs bypass all checks
+- [x] Telemetry failure tidak membypass keputusan block
+- [x] Downstream application tidak pernah dipanggil dua kali
+
+### ✅ Security Event Context
+
+- [x] Event menyimpan request/response timing, action, network, user hash, dan parsed client
+- [x] Query, referer, cookie, authorization, dan matched source sensitif teredaksi
+- [x] GeoIP bersifat opt-in dan event lama tetap kompatibel dengan field nullable
 
 ---
 

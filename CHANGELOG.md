@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Security Event Context** — detected threats now record request IDs, routes, content metadata, response status, duration, enforcement action, country/ASN/ISP, HMAC user identity, and parsed browser/OS/device type
+- **Event Filters and Dashboard Insights** — enriched event fields are filterable through the REST API and visible in SIEM exports, recent events, top countries, and device breakdowns
+
+### Changed
+
+- **GeoIP Contract** — ip-api and custom providers now support normalized ASN data and a configurable lookup timeout
+- **SIEM Export** — JSON, CSV, and Syslog include enrichment fields while preserving the existing CSV column order prefix
+
+### Security
+
+- **Sensitive Data Redaction** — configured query secrets plus cookie and authorization match values are redacted before database persistence or export
+- **Pseudonymous User Correlation** — authenticated user identifiers are stored only as HMAC-SHA256 hashes
+- **Telemetry Isolation** — event persistence/enrichment failures no longer weaken blocking decisions, and downstream requests are never invoked twice
+
 ## [1.0.2] - 2026-04-06
 
 ### Fixed

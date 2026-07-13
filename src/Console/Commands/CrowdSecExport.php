@@ -64,29 +64,67 @@ class CrowdSecExport extends Command
             'event_type' => $event->event_type,
             'severity' => $event->severity,
             'matched_patterns' => $event->matched_patterns,
-            'request_uri' => $event->request_data['uri'] ?? null,
+            'request_uri' => $event->request_data['path'] ?? $event->request_data['uri'] ?? null,
             'request_method' => $event->request_data['method'] ?? null,
             'user_agent' => $event->request_data['user_agent'] ?? null,
+            'request_id' => $event->request_id,
+            'route_name' => $event->route_name,
+            'content_type' => $event->content_type,
+            'content_length' => $event->content_length,
+            'response_status' => $event->response_status,
+            'duration_ms' => $event->duration_ms,
+            'action_taken' => $event->action_taken,
+            'country_code' => $event->country_code,
+            'asn' => $event->asn,
+            'isp' => $event->isp,
+            'authenticated_user_id_hash' => $event->authenticated_user_id_hash,
+            'browser' => $event->browser,
+            'os' => $event->os,
+            'device_type' => $event->device_type,
         ])->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
     protected function formatCsv($events): string
     {
-        $lines = ['timestamp,ip,event_type,severity,request_uri,request_method,user_agent'];
+        $lines = [implode(',', [
+            'timestamp', 'ip', 'event_type', 'severity', 'request_uri', 'request_method', 'user_agent',
+            'request_id', 'route_name', 'content_type', 'content_length', 'response_status', 'duration_ms',
+            'action_taken', 'country_code', 'asn', 'isp', 'authenticated_user_id_hash', 'browser', 'os',
+            'device_type',
+        ])];
 
         foreach ($events as $event) {
-            $lines[] = implode(',', [
+            $lines[] = implode(',', array_map([$this, 'csvField'], [
                 $event->created_at->toISOString(),
                 $event->ip,
                 $event->event_type ?? '',
                 $event->severity ?? '',
-                '"' . str_replace('"', '""', $event->request_data['uri'] ?? '') . '"',
+                $event->request_data['path'] ?? $event->request_data['uri'] ?? '',
                 $event->request_data['method'] ?? '',
-                '"' . str_replace('"', '""', $event->request_data['user_agent'] ?? '') . '"',
-            ]);
+                $event->request_data['user_agent'] ?? '',
+                $event->request_id,
+                $event->route_name,
+                $event->content_type,
+                $event->content_length,
+                $event->response_status,
+                $event->duration_ms,
+                $event->action_taken,
+                $event->country_code,
+                $event->asn,
+                $event->isp,
+                $event->authenticated_user_id_hash,
+                $event->browser,
+                $event->os,
+                $event->device_type,
+            ]));
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    protected function csvField(mixed $value): string
+    {
+        return '"'.str_replace('"', '""', (string) ($value ?? '')).'"';
     }
 
     protected function formatSyslog($events): string
@@ -104,14 +142,21 @@ class CrowdSecExport extends Command
             };
 
             $lines[] = sprintf(
-                '<%d>1 %s %s CrowdSec - - - ip=%s event_type=%s severity=%s uri=%s',
+                '<%d>1 %s %s CrowdSec - - - ip=%s event_type=%s severity=%s uri=%s request_id=%s action=%s status=%s duration_ms=%s country=%s asn=%s device=%s',
                 $priority,
                 $event->created_at->toISOString(),
                 gethostname(),
                 $event->ip,
                 $event->event_type ?? 'unknown',
                 $event->severity ?? 'unknown',
-                $event->request_data['uri'] ?? '-',
+                $event->request_data['path'] ?? $event->request_data['uri'] ?? '-',
+                $event->request_id ?? '-',
+                $event->action_taken ?? '-',
+                $event->response_status ?? '-',
+                $event->duration_ms ?? '-',
+                $event->country_code ?? '-',
+                $event->asn ?? '-',
+                $event->device_type ?? '-',
             );
         }
 

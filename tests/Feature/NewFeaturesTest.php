@@ -507,6 +507,7 @@ class NewFeaturesTest extends TestCase
                 'city' => 'San Francisco',
                 'lat' => 37.7749,
                 'lon' => -122.4194,
+                'as' => 'AS15169 Google LLC',
                 'isp' => 'Test ISP',
             ]),
         ]);
@@ -517,6 +518,7 @@ class NewFeaturesTest extends TestCase
         // First call — should hit API
         $result1 = $geoip->lookup('8.8.8.8');
         $this->assertEquals('United States', $result1['country']);
+        $this->assertSame(15169, $result1['asn']);
 
         // Second call — should hit cache (no additional HTTP call)
         $result2 = $geoip->lookup('8.8.8.8');
@@ -585,10 +587,21 @@ class NewFeaturesTest extends TestCase
             'severity' => 'critical',
             'request_data' => ['uri' => '/test', 'method' => 'GET', 'user_agent' => 'curl'],
             'matched_patterns' => ['UNION SELECT'],
+            'request_id' => 'export-request-id',
+            'action_taken' => 'blocked',
+            'response_status' => 403,
         ]);
 
-        $this->artisan('crowdsec:export', ['--format' => 'json'])
+        $output = tempnam(sys_get_temp_dir(), 'crowdsec-json-');
+        $this->artisan('crowdsec:export', ['--format' => 'json', '--output' => $output])
             ->assertSuccessful();
+
+        $exported = json_decode(file_get_contents($output), true);
+        @unlink($output);
+
+        $this->assertSame('export-request-id', $exported[0]['request_id']);
+        $this->assertSame('blocked', $exported[0]['action_taken']);
+        $this->assertSame(403, $exported[0]['response_status']);
     }
 
     public function test_export_csv_format(): void

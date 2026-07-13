@@ -204,7 +204,8 @@ class ReDoSResistanceTest extends TestCase
         $scenarios = config('crowdsec-scenarios');
         $nonScenarioKeys = ['enabled', 'log_channel', 'blocked_response_message', 'max_content_length',
             'block_empty_ua', 'blocked_methods', 'behavior', 'defaults', 'whitelist_ips', 'login_routes',
-            'cache', 'notifications', 'honeypot_routes', 'geoip', 'api', 'dashboard'];
+            'cache', 'notifications', 'honeypot_routes', 'geoip', 'api', 'metrics', 'audit', 'dashboard',
+            'event_context'];
 
         $start = hrtime(true);
         foreach ($scenarios as $name => $config) {

@@ -47,12 +47,29 @@ class CrowdSecDashboardController extends Controller
             ->pluck('count', 'severity')
             ->toArray();
 
+        $topCountries = SecurityEvent::selectRaw('country_code, COUNT(*) as count')
+            ->whereNotNull('country_code')
+            ->where('created_at', '>=', now()->subWeek())
+            ->groupBy('country_code')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get();
+
+        $deviceBreakdown = SecurityEvent::selectRaw('device_type, COUNT(*) as count')
+            ->whereNotNull('device_type')
+            ->where('created_at', '>=', now()->subWeek())
+            ->groupBy('device_type')
+            ->orderByDesc('count')
+            ->get();
+
         return view('crowdsec::dashboard', compact(
             'stats',
             'recentEvents',
             'blockedIps',
             'topAttackers',
-            'threatBreakdown'
+            'threatBreakdown',
+            'topCountries',
+            'deviceBreakdown'
         ));
     }
 }

@@ -11,6 +11,7 @@ use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
 use RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
+use RiloArbabillah\LaravelCrowdSec\Services\SecurityEventContextService;
 
 class CrowdSecServiceProvider extends ServiceProvider
 {
@@ -21,7 +22,7 @@ class CrowdSecServiceProvider extends ServiceProvider
     {
         // Register the main service
         $this->app->singleton('crowdsec', function ($app) {
-            return new CrowdSecService();
+            return new CrowdSecService($app->make(SecurityEventContextService::class));
         });
 
         // Register the facade
