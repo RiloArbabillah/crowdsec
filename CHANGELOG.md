@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-14
+
 ### Added
 
 - **Security Event Context** — detected threats now record request IDs, routes, content metadata, response status, duration, enforcement action, country/ASN/ISP, HMAC user identity, and parsed browser/OS/device type

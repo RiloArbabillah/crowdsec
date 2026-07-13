@@ -8,7 +8,7 @@ A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package f
 
 ## Release Status
 
-- Latest stable Packagist release: `v1.0.2`
+- Latest stable Packagist release: `v1.1.0`
 - Stable compatibility: Laravel `^10.0|^11.0|^12.0` with the current hardening and CI updates
 
 ## Features

@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 13 Jul 2026
+> Last updated: 14 Jul 2026
 > **Test suite:** 207 passed (409 assertions)
-> **Next focus:** cut the next `1.0.x` patch tag so Packagist picks up the latest hardening, docs, and Laravel 12 compatibility
+> **Next focus:** monitor `v1.1.0` adoption and Packagist synchronization
 
 ---
 
@@ -243,6 +243,7 @@
 ## 📝 Git History
 
 ```
+f2461d7  feat: enrich security events with client context
 793c222  chore: remove release notes temp file
 d6d81e0  docs: sync Packagist README for 1.0.2
 3f32562  chore: remove release notes temp file
@@ -272,5 +273,4 @@ cd80167  feat: add SIEM-compatible event export command (#17) (#30)
 5b05f35  feat: add honeypot route trap middleware (#16) (#28)
 37e065d  feat: add custom pattern plugin system (#15) (#27)
 710a4c9  feat: add notification support (email, Slack, Telegram) (#8) (#26)
-7f9743e  feat: add Event/Listener system for threat detection (#7) (#25)
 ```

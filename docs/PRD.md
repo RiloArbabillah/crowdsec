@@ -5,10 +5,10 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.0.x (stable)                    |
+| **Version**      | 1.1.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-07-13                         |
+| **Last Updated** | 2026-07-14                         |
 
 ---
 
