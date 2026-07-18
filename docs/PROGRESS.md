@@ -2,7 +2,7 @@
 
 > Last updated: 19 Jul 2026
 > **Test suite:** 237 passed (480 assertions)
-> **Next focus:** validate the unreleased `v1.2.0` changes across the GitHub Actions matrix
+> **Next focus:** monitor `v1.2.0` adoption and Packagist synchronization
 
 ---
 
@@ -229,8 +229,8 @@
 
 - [x] **Validate the full CI matrix** — Laravel 10/11/12 compatibility passed on GitHub Actions
 - [x] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
-- [ ] **Validate `v1.2.0` on GitHub Actions** — confirm PHP 8.4 and all Laravel compatibility jobs
-- [ ] **Prepare `v1.2.0` release metadata** — update stable version only after the matrix succeeds
+- [x] **Validate `v1.2.0` on GitHub Actions** — PHP 8.4 and all Laravel compatibility jobs passed
+- [x] **Prepare `v1.2.0` release metadata** — stable README, CHANGELOG, PRD, and progress metadata synchronized
 
 ### Future Enhancements (v1.1+)
 
@@ -256,7 +256,7 @@
 | Test assertions        | 480        |
 | Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
-| Package status         | v1.1.1 stable; v1.2.0 in development |
+| Package status         | v1.2.0 stable release |
 | CI quality gates       | PHPUnit + Larastan/PHPStan level 5 + Composer audit |
 
 ---
@@ -264,6 +264,7 @@
 ## 📝 Git History
 
 ```
+abb00b9  feat: add configurable WAF policy controls
 b4f2401  docs: prepare v1.1.1 release
 37bd253  fix: harden behavior tracking reliability
 1271b68  docs: add AI installation guide
@@ -293,5 +294,4 @@ b5ab47c  security: audit regex patterns for ReDoS vulnerability (#37) (#43)
 ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
 4222fc7  docs: track docs/ directory and update PRD + PROGRESS
 43758db  docs: update PRD, PROGRESS, and README with all resolved features
-6bec6f2  feat: add admin security dashboard (#12) (#33)
 ```

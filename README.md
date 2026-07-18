@@ -52,7 +52,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 - Laravel `^10.0`, `^11.0`, or `^12.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
-The latest stable package release is `v1.1.1`.
+The latest stable package release is `v1.2.0`.
 
 ## Quick Start
 

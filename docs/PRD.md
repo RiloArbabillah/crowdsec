@@ -5,7 +5,7 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.2.x (development)               |
+| **Version**      | 1.2.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
 | **Last Updated** | 2026-07-19                         |
@@ -512,7 +512,7 @@ routes/
 | Security event context enrichment  | Could Have | ✅ Done   |
 | Distributed blocklist sharing      | Won't Have | ⬜ Future |
 
-### Phase 4: v1.2.0 🔧 IN DEVELOPMENT
+### Phase 4: v1.2.0 ✅ COMPLETED
 
 | Task                                      | Priority    | Status  |
 | ----------------------------------------- | ----------- | ------- |

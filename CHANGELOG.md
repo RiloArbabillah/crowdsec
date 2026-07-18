@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-19
+
 ### Added
 
 - **WAF Policy Controls** — scenarios support `enforce`, `monitor`, and `disabled` modes plus route, path, method, scenario, and dotted body-field exclusions
@@ -23,12 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Login Threshold Semantics** — the configured allowance is processed before the following request is blocked, and provisional middleware tracking no longer raises threat score for a potentially valid login
 - **Notification Deduplication** — alert cooldown acquisition is atomic and is only consumed when a usable notification route exists
-- **Release Metadata** — README now identifies `v1.1.1` as the latest stable release
+- **Release Metadata** — stable-version documentation is synchronized and guarded against future README/CHANGELOG mismatches
 
 ### Security
 
 - **Narrow False-Positive Tuning** — exclusions affect only selected WAF scenarios or body fields and never bypass active blocks or behavior protection
 - **GeoIP Transport Privacy** — the default provider now uses HTTPS; the doctor command warns when the legacy HTTP provider is enabled
+
+### Upgrade Notes
+
+- No database migration is required for this release
+- Existing published configuration remains compatible; `ipwhois` becomes the default only when publishing a new configuration
+- Existing `ip-api` installations continue to work but receive a doctor warning because that legacy provider uses unencrypted HTTP
+- Threat arrays include a new additive `mode` field; consumers that ignore unknown keys require no changes
+- Applications that both protect a configured `login_routes` path and call `trackLoginAttempt()` manually should keep only one tracking mechanism to avoid double counting
 
 ## [1.1.1] - 2026-07-18
 
