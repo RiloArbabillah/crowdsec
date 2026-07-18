@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml/badge.svg)](https://github.com/RiloArbabillah/crowdsec/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/packagist/php-v/rilo-arbabillah/laravel-crowdsec.svg)](https://packagist.org/packages/rilo-arbabillah/laravel-crowdsec)
-[![License](https://img.shields.io/packagist/license/rilo-arbabillah/laravel-crowdsec.svg)](LICENSE)
+[![License](https://img.shields.io/packagist/l/rilo-arbabillah/laravel-crowdsec.svg)](LICENSE)
 
 Laravel CrowdSec is a lightweight, application-layer Web Application Firewall (WAF) for Laravel. It detects common web attacks, tracks suspicious behavior, blocks abusive IP addresses, and records security events without requiring a separate proxy or security agent.
 
