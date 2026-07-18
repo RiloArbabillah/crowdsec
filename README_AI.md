@@ -45,6 +45,8 @@ The target application must provide:
 
 The package name is `rilo-arbabillah/laravel-crowdsec`. Laravel auto-discovers its service provider, facade, commands, migrations, views, and middleware aliases.
 
+Laravel 10 remains package-compatible but is end-of-life. Do not describe compatibility as active framework security support; recommend a Laravel release that still receives security updates for production deployments.
+
 ## Installation Workflow
 
 ### 1. Inspect the target application
@@ -129,6 +131,8 @@ In production or an unidentified environment, obtain explicit user approval befo
 
 Do not manually recreate package migrations or edit migration history to hide a failure.
 
+Confirm that `ip_behaviors` includes `request_window_started_at`, `error_404_window_started_at`, and `login_window_started_at`. These fields provide independent fixed windows for request, 404, and login counters.
+
 ### 6. Protect selected routes
 
 The default installation must protect selected sensitive routes with the registered alias:
@@ -154,6 +158,8 @@ The package registers these aliases:
 
 Do not add honeypot routes or new rate limits without confirming that they match the application's routing and traffic expectations.
 
+The route rate limiter returns an actual reset time through `X-RateLimit-Reset` and a matching `Retry-After` value when blocked. Preserve these headers if the target application wraps middleware responses.
+
 ### 7. Add global protection only when requested
 
 For Laravel 11 or 12, global middleware belongs in `bootstrap/app.php`:
@@ -177,6 +183,10 @@ protected $middleware = [
 ```
 
 Before enabling global protection, identify health checks, inbound webhooks, trusted internal callbacks, large uploads, and other routes that may need exclusion or tuning.
+
+Successful authentication resets only the login-attempt counter and its fixed window by default. It must not remove an active block or reset the threat score unless the user explicitly requests that policy and enables `behavior.unblock_on_authentication` or `behavior.reset_threat_score_on_authentication`.
+
+Login POST requests remain subject to WAF inspection. Password fields are excluded by default, while query parameters, paths, headers, cookies, uploads, JWT data, and non-secret body fields remain inspected. Preserve or extend `behavior.login_ignored_fields` when an application uses additional credential field names.
 
 ## Optional Features
 

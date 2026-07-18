@@ -76,7 +76,7 @@ class CrowdSecProtection
         $securityEvent = null;
 
         // 1. Skip for whitelisted IPs (performance)
-        if ($this->isWhitelisted($ip)) {
+        if ($this->service->isWhitelisted($ip)) {
             return $next($request);
         }
 
@@ -105,8 +105,9 @@ class CrowdSecProtection
             return $this->blockedResponse($request, 'Request body too large');
         }
 
-        // 6. Check if this is a login request
-        if ($this->isLoginRequest($request)) {
+        // 6. Track login attempts, but continue inspecting all non-secret inputs.
+        $isLoginRequest = $this->isLoginRequest($request);
+        if ($isLoginRequest) {
             $this->service->trackLoginAttempt($ip);
 
             if ($this->service->exceedsLoginThreshold($ip)) {
@@ -115,12 +116,20 @@ class CrowdSecProtection
                 return $this->blockedResponse($request, 'Too many login attempts');
             }
 
-            // Allow login request through (skip WAF patterns for passwords)
-            return $next($request);
         }
 
         // 7. Run WAF pattern detection
-        $threats = $this->service->analyzeRequest($request);
+        $excludedBodyFields = $isLoginRequest
+            ? array_map(
+                fn ($field) => strtolower((string) $field),
+                config('crowdsec-scenarios.behavior.login_ignored_fields', [
+                    'password',
+                    'password_confirmation',
+                    'current_password',
+                ]),
+            )
+            : [];
+        $threats = $this->service->analyzeRequest($request, $excludedBodyFields);
 
         if (! empty($threats)) {
             // Persist detection first. Response and final decision are filled in later.
@@ -244,58 +253,6 @@ class CrowdSecProtection
                 'event_id' => $event->getKey(),
             ]);
         }
-    }
-
-    /**
-     * Check if IP is whitelisted (supports exact match and CIDR notation)
-     */
-    protected function isWhitelisted(string $ip): bool
-    {
-        $whitelist = config('crowdsec-scenarios.whitelist_ips', []);
-
-        if (empty($whitelist)) {
-            return false;
-        }
-
-        foreach ($whitelist as $entry) {
-            if ($ip === $entry) {
-                return true;
-            }
-
-            if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if an IP address falls within a CIDR range (IPv4/IPv6)
-     */
-    protected function ipInCidr(string $ip, string $cidr): bool
-    {
-        [$subnet, $bits] = explode('/', $cidr, 2);
-        $bits = (int) $bits;
-
-        $ipBin = @inet_pton($ip);
-        $subnetBin = @inet_pton($subnet);
-
-        if ($ipBin === false || $subnetBin === false) {
-            return false;
-        }
-
-        if (strlen($ipBin) !== strlen($subnetBin)) {
-            return false;
-        }
-
-        $mask = str_repeat("\xff", (int) ($bits / 8));
-        if ($bits % 8 > 0) {
-            $mask .= chr(256 - (1 << (8 - ($bits % 8))));
-        }
-        $mask = str_pad($mask, strlen($ipBin), "\x00");
-
-        return ($ipBin & $mask) === ($subnetBin & $mask);
     }
 
     /**

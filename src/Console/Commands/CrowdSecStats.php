@@ -54,7 +54,10 @@ class CrowdSecStats extends Command
                 ->orderByDesc('count')
                 ->limit(10)
                 ->get()
-                ->map(fn ($item) => ['ip' => $item->ip, 'count' => $item->count])
+                ->map(fn (SecurityEvent $item) => [
+                    'ip' => $item->getAttribute('ip'),
+                    'count' => (int) $item->getAttribute('count'),
+                ])
                 ->values()
                 ->toArray(),
         ];

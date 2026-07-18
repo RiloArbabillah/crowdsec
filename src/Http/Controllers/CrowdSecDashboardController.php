@@ -62,7 +62,7 @@ class CrowdSecDashboardController extends Controller
             ->orderByDesc('count')
             ->get();
 
-        return view('crowdsec::dashboard', compact(
+        return view()->make('crowdsec::dashboard', compact(
             'stats',
             'recentEvents',
             'blockedIps',

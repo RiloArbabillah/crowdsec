@@ -27,9 +27,10 @@ class CrowdSecMetricsController extends Controller
             ->get();
 
         foreach ($threatsByType as $row) {
-            $type = $this->sanitizeLabel($row->event_type);
-            $severity = $this->sanitizeLabel($row->severity);
-            $lines[] = "crowdsec_threats_total{type=\"{$type}\",severity=\"{$severity}\"} {$row->total}";
+            $type = $this->sanitizeLabel((string) $row->getAttribute('event_type'));
+            $severity = $this->sanitizeLabel((string) $row->getAttribute('severity'));
+            $total = (int) $row->getAttribute('total');
+            $lines[] = "crowdsec_threats_total{type=\"{$type}\",severity=\"{$severity}\"} {$total}";
         }
 
         // -- blocked_ips_active (gauge) --

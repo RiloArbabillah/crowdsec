@@ -189,7 +189,7 @@ public function login(Request $request)
 }
 ```
 
-Successful Laravel authentication automatically clears the IP's login-attempt count and threat score, and removes an active block for that IP.
+Successful Laravel authentication resets only the IP's login-attempt counter and login window. Existing threat scores and active blocks are preserved by default. Automatic threat-score reset and unblocking are explicit configuration opt-ins.
 
 ### Analyze a request
 
@@ -240,14 +240,28 @@ return [
 
     'behavior' => [
         'request_threshold' => 500,
+        'request_window_minutes' => 60,
         '404_threshold' => 15,
+        '404_window_minutes' => 60,
         'login_threshold' => 5,
+        'login_window_minutes' => 5,
+        'login_ignored_fields' => [
+            'password',
+            'password_confirmation',
+            'current_password',
+        ],
+        'unblock_on_authentication' => false,
+        'reset_threat_score_on_authentication' => false,
         'threat_score_threshold' => 50,
         'block_duration' => 240,
         'severity' => 'high',
     ],
 ];
 ```
+
+Request, 404, and login counters use independent fixed windows. Login requests are still inspected by the WAF, but configured secret fields are excluded from body inspection. Query parameters, paths, headers, cookies, uploads, JWT data, and non-secret body fields remain protected.
+
+The `crowdsec.rate` middleware uses Laravel's atomic rate limiter and returns `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers based on the actual limiter state.
 
 ### Environment variables
 
@@ -502,7 +516,9 @@ composer analyse
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions tests the supported PHP and Laravel matrix and runs the PHPStan quality gate.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, runs a Composer security audit, and enforces Larastan/PHPStan level 5 across all package source and route files.
+
+Laravel 10 remains package-compatible, but it is end-of-life. Compatibility does not imply active framework security support; production applications should use a Laravel version that still receives security updates.
 
 Contributions should be submitted through a focused branch and pull request with tests for behavioral changes.
 

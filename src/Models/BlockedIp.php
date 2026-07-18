@@ -6,6 +6,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
+/**
+ * @property string $ip
+ * @property string|null $reason
+ * @property bool $is_active
+ * @property \Illuminate\Support\Carbon|null $expires_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ */
 class BlockedIp extends Model
 {
     use HasFactory;
@@ -88,7 +95,7 @@ class BlockedIp extends Model
             return null;
         }
 
-        return $this->created_at->diffInMinutes($this->expires_at);
+        return (int) round($this->created_at->diffInMinutes($this->expires_at));
     }
 
     public static function isBlocked(string $ip): bool

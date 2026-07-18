@@ -161,15 +161,15 @@ class CrowdSecService
      * Analyze a request for security threats.
      * Returns detected threats without logging or blocking — caller is responsible for those.
      */
-    public function analyzeRequest(Request $request): array
+    public function analyzeRequest(Request $request, array $excludedBodyFields = []): array
     {
-        return $this->checkWafPatterns($request);
+        return $this->checkWafPatterns($request, $excludedBodyFields);
     }
 
     /**
      * Check request against WAF patterns with multi-layer decoding
      */
-    public function checkWafPatterns(Request $request): array
+    public function checkWafPatterns(Request $request, array $excludedBodyFields = []): array
     {
         $threats = [];
         $inputsToCheck = [];
@@ -180,7 +180,7 @@ class CrowdSecService
 
         // Check body data for all mutating methods (not just POST)
         if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
-            $bodyData = $this->extractBodyData($request);
+            $bodyData = $this->extractBodyData($request, $excludedBodyFields);
             foreach ($bodyData as $key => $value) {
                 $inputsToCheck["body_{$key}"] = is_string($value) ? $value : '';
             }
@@ -502,12 +502,14 @@ class CrowdSecService
     /**
      * Extract and flatten body data for checking (supports JSON, form data, XML)
      */
-    protected function extractBodyData(Request $request): array
+    protected function extractBodyData(Request $request, array $excludedBodyFields = []): array
     {
         $flatData = [];
 
-        // Standard form / JSON data
-        $data = $request->all();
+        // Read the body only. Query parameters are inspected separately above.
+        $data = $request->isJson()
+            ? $request->json()->all()
+            : $request->request->all();
 
         // If empty, try to decode JSON body
         if (empty($data)) {
@@ -525,7 +527,7 @@ class CrowdSecService
 
         // Flatten the data for pattern matching
         if (! empty($data)) {
-            $this->flattenData($data, '', $flatData);
+            $this->flattenData($data, '', $flatData, 0, $excludedBodyFields);
         }
 
         return $flatData;
@@ -534,18 +536,26 @@ class CrowdSecService
     /**
      * Recursively flatten data array for pattern matching
      */
-    protected function flattenData(array $data, string $prefix, array &$flatData, int $depth = 0): void
-    {
+    protected function flattenData(
+        array $data,
+        string $prefix,
+        array &$flatData,
+        int $depth = 0,
+        array $excludedFields = [],
+    ): void {
         if ($depth > 10) {
             return;
         }
 
         foreach ($data as $key => $value) {
+            if (in_array(strtolower((string) $key), $excludedFields, true)) {
+                continue;
+            }
+
             $fullKey = $prefix ? "{$prefix}[{$key}]" : $key;
 
             if (is_array($value)) {
-                $flatData[$fullKey] = json_encode($value);
-                $this->flattenData($value, $fullKey, $flatData, $depth + 1);
+                $this->flattenData($value, $fullKey, $flatData, $depth + 1, $excludedFields);
             } else {
                 $flatData[$fullKey] = is_string($value) ? $value : (string) $value;
             }
@@ -635,8 +645,11 @@ class CrowdSecService
         }
 
         $totalWeight = array_sum(array_column($threats, 'weight'));
-        $behavior = IpBehavior::getOrCreate($ip);
-        $behavior->addThreatScore($totalWeight);
+        IpBehavior::withLock($ip, function (IpBehavior $behavior) use ($totalWeight): void {
+            $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + $totalWeight));
+            $behavior->setAttribute('last_activity', now());
+            $behavior->save();
+        });
     }
 
     /**
@@ -644,9 +657,7 @@ class CrowdSecService
      */
     public function exceedsBehaviorThreshold(string $ip): bool
     {
-        $behavior = IpBehavior::where('ip', $ip)
-            ->where('last_activity', '>=', now()->subHour())
-            ->first();
+        $behavior = IpBehavior::where('ip', $ip)->first();
 
         if (! $behavior) {
             return false;
@@ -654,8 +665,17 @@ class CrowdSecService
 
         $behaviorConfig = $this->scenarios['behavior'] ?? [];
 
-        return $behavior->request_count >= ($behaviorConfig['request_threshold'] ?? 500)
-            || $behavior->error_404_count >= ($behaviorConfig['404_threshold'] ?? 15)
+        $requestWindowActive = $behavior->isWindowActive(
+            'request_window_started_at',
+            (int) ($behaviorConfig['request_window_minutes'] ?? 60),
+        );
+        $errorWindowActive = $behavior->isWindowActive(
+            'error_404_window_started_at',
+            (int) ($behaviorConfig['404_window_minutes'] ?? 60),
+        );
+
+        return ($requestWindowActive && $behavior->request_count >= ($behaviorConfig['request_threshold'] ?? 500))
+            || ($errorWindowActive && $behavior->error_404_count >= ($behaviorConfig['404_threshold'] ?? 15))
             || $behavior->threat_score >= ($behaviorConfig['threat_score_threshold'] ?? 50);
     }
 
@@ -664,9 +684,7 @@ class CrowdSecService
      */
     public function exceedsLoginThreshold(string $ip): bool
     {
-        $behavior = IpBehavior::where('ip', $ip)
-            ->where('last_activity', '>=', now()->subMinutes(5))
-            ->first();
+        $behavior = IpBehavior::where('ip', $ip)->first();
 
         if (! $behavior) {
             return false;
@@ -674,7 +692,10 @@ class CrowdSecService
 
         $behaviorConfig = $this->scenarios['behavior'] ?? [];
 
-        return $behavior->login_attempts >= ($behaviorConfig['login_threshold'] ?? 5);
+        return $behavior->isWindowActive(
+            'login_window_started_at',
+            (int) ($behaviorConfig['login_window_minutes'] ?? 5),
+        ) && $behavior->login_attempts >= ($behaviorConfig['login_threshold'] ?? 5);
     }
 
     /**
@@ -693,27 +714,34 @@ class CrowdSecService
             $durationMinutes = $this->scenarios['defaults'][$severity] ?? 240;
         }
 
-        // Progressive escalation: check past blocks to escalate duration
-        $behavior = IpBehavior::where('ip', $ip)->first();
-        if ($behavior) {
-            $blockCount = $behavior->block_count ?? 0;
-            if ($blockCount > 0) {
-                // Double duration for each previous block, capped at 7 days
-                $escalatedDuration = $durationMinutes * pow(2, min($blockCount, 5));
-                $durationMinutes = min($escalatedDuration, 10080); // max 7 days
-            }
-            $behavior->increment('block_count');
-        }
+        [$blockedIp, $durationMinutes, $blockCount] = IpBehavior::withLock(
+            $ip,
+            function (IpBehavior $behavior) use ($ip, $reason, $durationMinutes, $eventType): array {
+                $previousBlockCount = (int) $behavior->block_count;
+                $effectiveDuration = $durationMinutes;
 
-        // Use updateOrCreate to handle re-blocking
-        $blockedIp = BlockedIp::updateOrCreate(
-            ['ip' => $ip],
-            [
-                'reason' => $reason,
-                'event_type' => $eventType,
-                'expires_at' => now()->addMinutes($durationMinutes),
-                'is_active' => true,
-            ]
+                // Progressive escalation: double each re-offense, capped at 7 days.
+                if ($previousBlockCount > 0) {
+                    $escalatedDuration = $effectiveDuration * pow(2, min($previousBlockCount, 5));
+                    $effectiveDuration = (int) min($escalatedDuration, 10080);
+                }
+
+                $behavior->setAttribute('block_count', $previousBlockCount + 1);
+                $behavior->setAttribute('last_activity', now());
+                $behavior->save();
+
+                $blockedIp = BlockedIp::updateOrCreate(
+                    ['ip' => $ip],
+                    [
+                        'reason' => $reason,
+                        'event_type' => $eventType,
+                        'expires_at' => now()->addMinutes($effectiveDuration),
+                        'is_active' => true,
+                    ]
+                );
+
+                return [$blockedIp, $effectiveDuration, $previousBlockCount + 1];
+            }
         );
 
         // Invalidate cache so blocked status is reflected immediately
@@ -723,18 +751,18 @@ class CrowdSecService
             'ip' => $ip,
             'reason' => $reason,
             'duration_minutes' => $durationMinutes,
-            'block_count' => ($behavior->block_count ?? 1),
+            'block_count' => $blockCount,
         ]);
 
         // Dispatch IpBlocked event
-        IpBlocked::dispatch($ip, $reason, $durationMinutes, $behavior->block_count ?? 1, $eventType);
+        IpBlocked::dispatch($ip, $reason, $durationMinutes, $blockCount, $eventType);
 
         // Record audit log
         if (config('crowdsec-scenarios.audit.enabled', false)) {
             AuditLog::record('ip_blocked', $ip, [
                 'reason' => $reason,
                 'duration_minutes' => $durationMinutes,
-                'block_count' => $behavior->block_count ?? 1,
+                'block_count' => $blockCount,
                 'event_type' => $eventType,
             ]);
         }

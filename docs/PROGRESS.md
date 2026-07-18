@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 14 Jul 2026
-> **Test suite:** 207 passed (409 assertions)
-> **Next focus:** monitor `v1.1.0` adoption and Packagist synchronization
+> Last updated: 18 Jul 2026
+> **Test suite:** 217 passed (435 assertions)
+> **Next focus:** validate and release `v1.1.1` reliability hardening
 
 ---
 
@@ -57,6 +57,10 @@
 - [x] Cumulative threat score (threshold: 50, max: 100)
 - [x] Login route auto-detection (configurable routes)
 - [x] **Threat score decay** — auto-decay berdasarkan inactivity (`decayThreatScore`, `applyDecayAll`)
+- [x] Independent fixed windows — request 60 menit, 404 60 menit, dan login 5 menit
+- [x] Atomic per-IP counter dan threat-score updates dengan transaction locking
+- [x] Login WAF tetap memeriksa query dan field body non-secret
+- [x] Autentikasi sukses hanya mereset login window secara default; unblock dan threat reset opt-in
 
 ### Data Layer
 
@@ -106,6 +110,7 @@
 - [x] Configurable max attempts dan decay window via middleware params
 - [x] Returns 429 with `Retry-After` dan `X-RateLimit-*` headers
 - [x] Middleware alias: `crowdsec.rate:60,1` (60 req per 1 min)
+- [x] Laravel atomic `RateLimiter` dengan `Retry-After` dan `X-RateLimit-Reset` aktual
 
 ### Custom Patterns
 
@@ -181,10 +186,10 @@
 ### CI/CD
 
 - [x] GitHub Actions CI pipeline (`.github/workflows/tests.yml`)
-- [x] Matrix: PHP 8.1/8.2/8.3 × Laravel 10.x/11.x/12.x
+- [x] Matrix eksplisit Laravel 10/Testbench 8, Laravel 11/Testbench 9, Laravel 12/Testbench 10
 - [x] Composer dependency caching
 - [x] SQLite for testing
-- [x] Dedicated quality gate for `composer validate --strict` + `composer analyse`
+- [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 5 seluruh source
 
 ### Testing
 
@@ -194,13 +199,15 @@
 - [x] 8 performance benchmarks (all < 1ms target)
 - [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
 - [x] Security event context coverage (enforcement, privacy, API, export, GeoIP, UA, HMAC)
-- [x] Total: **207 tests, 409 assertions**
+- [x] 10 reliability hardening tests (fixed windows, nested login inspection, auth defaults, rate limiting)
+- [x] Total: **217 tests, 435 assertions**
 
 ### Documentation
 
 - [x] README.md lengkap (installation, usage, config, benchmarks, CI badge)
 - [x] PRD.md — Product Requirements Document
 - [x] PROGRESS.md — Project progress tracking
+- [x] README_AI.md — kontrak instalasi package untuk coding agent
 
 ---
 
@@ -208,8 +215,8 @@
 
 ### Next Steps
 
-- [ ] **Tag next `1.0.x` release** — publish the latest Laravel 12 compatibility and hardening updates to Packagist
-- [ ] **Refresh release notes after tagging** — sync README/CHANGELOG snapshots with the next stable tag
+- [ ] **Validate the full CI matrix** — confirm Laravel 10/11/12 compatibility on GitHub Actions
+- [ ] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
 
 ### Future Enhancements (v1.1+)
 
@@ -223,26 +230,31 @@
 
 | Metric                 | Value      |
 | ---------------------- | ---------- |
-| Total source files     | 28         |
-| Total lines of code    | ~4,000     |
+| Total source files     | 29         |
+| Total lines of code    | ~4,200     |
 | Attack types detected  | 15         |
 | Regex patterns         | 100+       |
 | Unit tests             | 27         |
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Total tests**        | **207**    |
-| Test assertions        | 409        |
+| **Total tests**        | **217**    |
+| Test assertions        | 435        |
 | Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
 | Package status         | Stable on Packagist |
-| CI quality gates       | PHPUnit + PHPStan |
+| CI quality gates       | PHPUnit + Larastan/PHPStan level 5 + Composer audit |
 
 ---
 
 ## 📝 Git History
 
 ```
+1271b68  docs: add AI installation guide
+0430a1a  docs: fix Packagist license badge
+7e6b336  docs: modernize project readme
+b441a22  chore: remove release notes temp file
+c0b5f0c  docs: prepare v1.1.0 release
 f2461d7  feat: enrich security events with client context
 793c222  chore: remove release notes temp file
 d6d81e0  docs: sync Packagist README for 1.0.2
@@ -268,9 +280,4 @@ ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
 6bec6f2  feat: add admin security dashboard (#12) (#33)
 d346a44  feat: add REST API endpoints for CrowdSec (#14) (#32)
 b4f2add  feat: add GeoIP lookup service (#13) (#31)
-cd80167  feat: add SIEM-compatible event export command (#17) (#30)
-29bb5c7  feat: add per-route rate limiting middleware (#11) (#29)
-5b05f35  feat: add honeypot route trap middleware (#16) (#28)
-37e065d  feat: add custom pattern plugin system (#15) (#27)
-710a4c9  feat: add notification support (email, Slack, Telegram) (#8) (#26)
 ```

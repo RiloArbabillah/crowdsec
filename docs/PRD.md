@@ -8,7 +8,7 @@
 | **Version**      | 1.1.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-07-14                         |
+| **Last Updated** | 2026-07-18                         |
 
 ---
 
@@ -177,7 +177,7 @@ Middleware harus memproses request dalam urutan berikut:
 ```
 1. Check enabled → 2. Check whitelist → 3. Check blocked
 → 4. Check HTTP method → 5. Check empty UA → 6. Check body size
-→ 7. Check login route → 8. WAF patterns → 9. Track behavior
+→ 7. Track login route → 8. WAF patterns (exclude secret fields) → 9. Track behavior
 → 10. Check behavior threshold → Process request → Track 404
 ```
 
@@ -192,10 +192,12 @@ Middleware harus memproses request dalam urutan berikut:
 
 Per-IP tracking meliputi:
 
-- Request count per jam (threshold: 500)
-- Error 404 count per jam (threshold: 15)
-- Login attempts per 5 menit (threshold: 5)
+- Request count dalam fixed window independen 60 menit (threshold: 500)
+- Error 404 count dalam fixed window independen 60 menit (threshold: 15)
+- Login attempts dalam fixed window independen 5 menit (threshold: 5)
 - Cumulative threat score (threshold: 50)
+- Mutasi counter dan threat score diserialisasi per IP untuk mencegah lost update
+- Autentikasi sukses mereset login counter/window saja; unblock dan reset threat score bersifat opt-in
 
 ### FR-06: Security Event Logging
 
@@ -276,7 +278,7 @@ Public API melalui `CrowdSec` facade:
 | **Performance**     | Middleware overhead < 5ms per request                              |
 | **Reliability**     | Fail-open; telemetry tidak mengubah enforcement dan downstream hanya dipanggil sekali |
 | **Compatibility**   | Laravel 10.x, 11.x, 12.x, PHP 8.1+                                 |
-| **Database**        | MySQL, PostgreSQL, SQLite (semua yang didukung Laravel)            |
+| **Database**        | MySQL, PostgreSQL, SQLite untuk 4 tabel package                     |
 | **Security**        | Tahan encoding bypass; secret request dan raw user ID tidak dipersisten |
 | **Maintainability** | Configurable patterns — bisa ditambah tanpa ubah kode              |
 | **Testing**         | Unit test untuk semua attack detection + false positive prevention |
@@ -308,6 +310,9 @@ erDiagram
         int login_attempts
         decimal threat_score
         int block_count
+        timestamp request_window_started_at
+        timestamp error_404_window_started_at
+        timestamp login_window_started_at
         timestamp first_activity
         timestamp last_activity
         timestamps created_at
@@ -361,9 +366,8 @@ flowchart TD
     H --> I
     I -->|Yes| X
     I -->|No| J{Login Route?}
-    J -->|Yes| K{Login Threshold?}
-    K -->|Yes| F
-    K -->|No| Z
+    J -->|Yes| K[Track Login Attempt]
+    K --> L[WAF Pattern Check Excluding Secrets]
     J -->|No| L[WAF Pattern Check]
     L --> M{Threats Found?}
     M -->|Yes, Blocking| N[Log + Block IP + 403]
@@ -388,7 +392,7 @@ src/
 │   ├── CrowdSecExport.php         # SIEM export (JSON/CSV/Syslog)
 │   └── CrowdSecStats.php          # Artisan stats command
 ├── Database/Migrations/
-│   └── create_security_tables      # Auto-migration (3 tables)
+│   └── package migrations          # Auto-migration (4 tables + schema updates)
 ├── Events/
 │   ├── BehaviorThresholdExceeded.php
 │   ├── IpBlocked.php
@@ -434,8 +438,9 @@ routes/
 | `illuminate/*` (10.x/11.x/12.x) | Runtime | Core Laravel components |
 | `orchestra/testbench`      | Dev     | Testing framework       |
 | `phpunit/phpunit`          | Dev     | Test runner             |
-| `phpstan/phpstan`          | Dev     | Static analysis gate    |
-| Database (any)             | Runtime | Untuk 3 tabel security  |
+| `phpstan/phpstan`          | Dev     | Static analysis level 5 |
+| `larastan/larastan`        | Dev     | Laravel-aware analysis  |
+| Database (any)             | Runtime | Untuk 4 tabel package   |
 
 ### Risks
 
@@ -538,6 +543,13 @@ routes/
 - [x] Whitelisted IPs bypass all checks
 - [x] Telemetry failure tidak membypass keputusan block
 - [x] Downstream application tidak pernah dipanggil dua kali
+- [x] Counter request, 404, dan login memakai fixed window independen
+- [x] Mutasi behavior dan threat score atomic per IP
+- [x] Login tetap menginspeksi input non-secret
+- [x] Autentikasi sukses tidak otomatis menghapus block atau threat score
+- [x] Rate limiter route atomic dan mengirim waktu reset aktual
+- [x] Larastan/PHPStan level 5 memeriksa seluruh `src` dan `routes`
+- [x] CI memetakan Laravel 10/11/12 ke Testbench yang kompatibel secara eksplisit
 
 ### ✅ Security Event Context
 

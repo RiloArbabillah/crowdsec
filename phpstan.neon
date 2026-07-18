@@ -1,9 +1,11 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
 parameters:
     level: 5
+    treatPhpDocTypesAsCertain: false
     paths:
-        - src/Console/Commands/CrowdSecDoctor.php
-        - src/Listeners
-        - src/Notifications
+        - src
         - routes
     tmpDir: storage/phpstan
     bootstrapFiles:

@@ -397,8 +397,14 @@ return [
     // Behavior thresholds (not pattern-based)
     'behavior' => [
         'request_threshold' => 500, // requests per hour
+        'request_window_minutes' => 60,
         '404_threshold' => 15, // 404s per hour
+        '404_window_minutes' => 60,
         'login_threshold' => 5, // login attempts per 5 minutes
+        'login_window_minutes' => 5,
+        'login_ignored_fields' => ['password', 'password_confirmation', 'current_password'],
+        'unblock_on_authentication' => false,
+        'reset_threat_score_on_authentication' => false,
         'threat_score_threshold' => 50,
         'block_duration' => 240, // 4 hours
         'severity' => 'high',

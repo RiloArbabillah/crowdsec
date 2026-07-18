@@ -5,6 +5,11 @@ namespace RiloArbabillah\LaravelCrowdSec\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string $ip
+ * @property string $event_type
+ * @property string $severity
+ */
 class SecurityEvent extends Model
 {
     use HasFactory;

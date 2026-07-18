@@ -84,21 +84,21 @@ class CrowdSecServiceProvider extends ServiceProvider
         $router->aliasMiddleware('crowdsec.honeypot', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\HoneypotTrap::class);
         $router->aliasMiddleware('crowdsec.rate', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecRateLimit::class);
 
-        // Listen for successful authentication to unblock IP and reset login attempts
+        // Reset the login window after successful authentication. Unblocking and
+        // threat-score resets are secure opt-ins for backward compatibility.
         Event::listen(Authenticated::class, function (Authenticated $event) {
             $ip = request()->ip() ?? 'unknown';
             $service = app('crowdsec');
 
-            // Unblock the IP if it was blocked
-            $service->unblockIp($ip);
+            if (config('crowdsec-scenarios.behavior.unblock_on_authentication', false)) {
+                $service->unblockIp($ip);
+            }
 
-            // Reset login attempts and threat score for this IP
             $behavior = IpBehavior::where('ip', $ip)->first();
             if ($behavior) {
-                $behavior->update([
-                    'login_attempts' => 0,
-                    'threat_score' => 0,
-                ]);
+                $behavior->resetAuthenticationState(
+                    (bool) config('crowdsec-scenarios.behavior.reset_threat_score_on_authentication', false),
+                );
             }
         });
 
