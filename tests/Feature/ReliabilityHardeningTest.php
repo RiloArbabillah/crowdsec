@@ -115,6 +115,17 @@ class ReliabilityHardeningTest extends TestCase
         $this->assertSame(1, $behavior->login_attempts);
     }
 
+    public function test_manual_and_provisional_login_tracking_keep_distinct_score_semantics(): void
+    {
+        $manual = $this->service->trackLoginAttempt('203.0.113.212');
+        $provisional = $this->service->trackLoginAttempt('203.0.113.213', false);
+
+        $this->assertSame(1, $manual->login_attempts);
+        $this->assertSame(10.0, (float) $manual->threat_score);
+        $this->assertSame(1, $provisional->login_attempts);
+        $this->assertSame(0.0, (float) $provisional->threat_score);
+    }
+
     public function test_login_password_is_ignored_but_other_body_fields_are_inspected(): void
     {
         $passwordOnly = $this->sendLogin(

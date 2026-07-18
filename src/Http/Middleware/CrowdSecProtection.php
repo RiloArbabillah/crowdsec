@@ -11,6 +11,7 @@ use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
+use RiloArbabillah\LaravelCrowdSec\Services\WafPolicy;
 
 class CrowdSecProtection
 {
@@ -108,14 +109,15 @@ class CrowdSecProtection
         // 6. Track login attempts, but continue inspecting all non-secret inputs.
         $isLoginRequest = $this->isLoginRequest($request);
         if ($isLoginRequest) {
-            $this->service->trackLoginAttempt($ip);
-
             if ($this->service->exceedsLoginThreshold($ip)) {
                 $this->service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
 
                 return $this->blockedResponse($request, 'Too many login attempts');
             }
 
+            // Provisional request tracking is reset by Laravel's Authenticated event.
+            // Manual failed-login tracking keeps its existing threat-score behavior.
+            $this->service->trackLoginAttempt($ip, false);
         }
 
         // 7. Run WAF pattern detection
@@ -141,6 +143,9 @@ class CrowdSecProtection
 
             // Add cumulative threat score from detected patterns
             $this->service->addThreatScoreFromThreats($ip, $threats);
+            $hasEnforcedThreats = collect($threats)->contains(
+                fn ($threat) => ($threat['mode'] ?? WafPolicy::MODE_ENFORCE) === WafPolicy::MODE_ENFORCE,
+            );
 
             // Separate blocking threats from low severity
             $blockingThreats = $this->service->getBlockingThreats($threats);
@@ -202,7 +207,7 @@ class CrowdSecProtection
             $securityEvent,
             $response,
             $startedAtNanoseconds,
-            'allowed_scored'
+            isset($hasEnforcedThreats) && ! $hasEnforcedThreats ? 'monitored' : 'allowed_scored'
         );
 
         if ($response->getStatusCode() === 404) {

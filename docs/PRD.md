@@ -5,10 +5,10 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.1.x (stable)                    |
+| **Version**      | 1.2.x (development)               |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-07-18                         |
+| **Last Updated** | 2026-07-19                         |
 
 ---
 
@@ -119,7 +119,7 @@ Aplikasi Laravel rentan terhadap serangan web yang umum seperti **SQL Injection,
 | Honeypot route trap middleware                 | ✅ Implemented |
 | Per-route rate limiting middleware             | ✅ Implemented |
 | SIEM-compatible event export (JSON/CSV/Syslog) | ✅ Implemented |
-| GeoIP lookup service (ip-api.com)              | ✅ Implemented |
+| GeoIP lookup service (HTTPS + legacy/custom)   | ✅ Implemented |
 | REST API endpoints (6 endpoints)               | ✅ Implemented |
 | Admin security dashboard (Blade)               | ✅ Implemented |
 | Security event context enrichment               | ✅ Implemented |
@@ -177,7 +177,8 @@ Middleware harus memproses request dalam urutan berikut:
 ```
 1. Check enabled → 2. Check whitelist → 3. Check blocked
 → 4. Check HTTP method → 5. Check empty UA → 6. Check body size
-→ 7. Track login route → 8. WAF patterns (exclude secret fields) → 9. Track behavior
+→ 7. Check prior login threshold + track provisional request
+→ 8. Resolve WAF modes/exclusions + inspect patterns → 9. Track behavior
 → 10. Check behavior threshold → Process request → Track 404
 ```
 
@@ -198,6 +199,8 @@ Per-IP tracking meliputi:
 - Cumulative threat score (threshold: 50)
 - Mutasi counter dan threat score diserialisasi per IP untuk mencegah lost update
 - Autentikasi sukses mereset login counter/window saja; unblock dan reset threat score bersifat opt-in
+- Middleware mengizinkan jumlah request sesuai threshold dan memblokir request berikutnya
+- Provisional login tracking tidak menambah threat score; manual failed-attempt tracking tetap menambah score
 
 ### FR-06: Security Event Logging
 
@@ -206,7 +209,7 @@ Setiap threat yang terdeteksi harus di-log dengan:
 - IP address, event type, severity
 - Request data (method, path, query teredaksi, user agent, referer teredaksi)
 - Request ID, named route, content type, dan content length
-- Response status, durasi, serta keputusan `blocked` atau `allowed_scored`
+- Response status, durasi, serta keputusan `blocked`, `allowed_scored`, atau `monitored`
 - Country code, ASN/ISP jika GeoIP aktif
 - HMAC user identifier serta browser, OS, dan device type
 - Matched patterns yang meredaksi cookie, authorization, dan field sensitif
@@ -249,7 +252,17 @@ Setiap threat yang terdeteksi harus di-log dengan:
 
 ### FR-14: GeoIP Lookup
 
-- `GeoIpService` — ip-api.com provider, country/ASN/ISP, 24h cache, timeout, custom callback
+- `GeoIpService` — HTTPS ipwho.is default, legacy ip-api, custom callback, country/ASN/ISP, timeout, dan cache 24 jam per provider
+- Private/reserved IP tidak dikirim ke provider eksternal
+- `crowdsec:doctor` memperingatkan penggunaan legacy provider melalui HTTP
+
+### FR-17: WAF Policy & False-Positive Tuning
+
+- Mode scenario `enforce`, `monitor`, atau `disabled`; custom scenario dapat menentukan mode
+- Override mode terpusat melalui `waf.scenario_modes`
+- Exclusion rule memakai selector route name, path, dan HTTP method dengan wildcard
+- Efek rule dibatasi ke scenario tertentu dan dotted body fields; active block serta behavior enforcement tidak dilewati
+- Threat result menambahkan field `mode`; monitor mode mencatat event tanpa score atau block
 
 ### FR-15: REST API
 
@@ -267,7 +280,7 @@ Setiap threat yang terdeteksi harus di-log dengan:
 Public API melalui `CrowdSec` facade:
 
 - `isBlocked(ip)`, `blockIp(ip, reason, duration)`, `unblockIp(ip)`
-- `analyzeRequest(request)`, `trackLoginAttempt(ip)`
+- `analyzeRequest(request)`, `trackLoginAttempt(ip, addThreatScore = true)`
 
 ---
 
@@ -418,7 +431,8 @@ src/
 │   └── SecurityAlertNotification.php # Mail/Slack notification
 ├── Services/
 │   ├── CrowdSecService.php         # Core engine (~700 lines)
-│   └── GeoIpService.php            # GeoIP lookup service
+│   ├── GeoIpService.php            # HTTPS/legacy/custom GeoIP providers
+│   └── WafPolicy.php               # Scenario modes and granular exclusions
 └── CrowdSecServiceProvider.php     # Auto-discovery provider
 resources/views/
 └── dashboard.blade.php             # Admin dashboard (dark theme)
@@ -498,6 +512,17 @@ routes/
 | Security event context enrichment  | Could Have | ✅ Done   |
 | Distributed blocklist sharing      | Won't Have | ⬜ Future |
 
+### Phase 4: v1.2.0 🔧 IN DEVELOPMENT
+
+| Task                                      | Priority    | Status  |
+| ----------------------------------------- | ----------- | ------- |
+| WAF enforce/monitor/disabled modes        | Must Have   | ✅ Done |
+| Granular false-positive exclusion rules   | Must Have   | ✅ Done |
+| HTTPS GeoIP provider + provider cache key | Must Have   | ✅ Done |
+| Atomic notification cooldown              | Should Have | ✅ Done |
+| PHP 8.4 compatibility matrix              | Should Have | ✅ Done |
+| Guarded release workflow                  | Should Have | ✅ Done |
+
 ---
 
 ## 11. Acceptance Criteria
@@ -521,6 +546,10 @@ routes/
 - [x] Apostrophes in text do NOT trigger SQLi
 - [x] `data:image/*` do NOT trigger XSS
 - [x] Standard HTML attributes do NOT trigger XSS
+- [x] Monitor mode logs tanpa scoring atau blocking
+- [x] Disabled mode menghapus scenario dari detection
+- [x] Exclusion rule dapat dibatasi berdasarkan route/path/method/body field
+- [x] Exclusion WAF tidak membypass active block atau behavior threshold
 
 ### ✅ IP Blocking
 
@@ -550,6 +579,10 @@ routes/
 - [x] Rate limiter route atomic dan mengirim waktu reset aktual
 - [x] Larastan/PHPStan level 5 memeriksa seluruh `src` dan `routes`
 - [x] CI memetakan Laravel 10/11/12 ke Testbench yang kompatibel secara eksplisit
+- [x] Notification cooldown diperoleh secara atomic
+- [x] Login threshold mengizinkan configured allowance sebelum block
+- [x] Release workflow memvalidasi metadata dan CI sebelum tagging
+- [x] PHP 8.4 tercakup pada matrix Laravel 10/11/12
 
 ### ✅ Security Event Context
 

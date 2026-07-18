@@ -315,6 +315,32 @@ class NewFeaturesTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_missing_notification_routes_do_not_consume_atomic_cooldown(): void
+    {
+        Notification::fake();
+        Cache::flush();
+        Config::set('crowdsec-scenarios.notifications', [
+            'enabled' => true,
+            'channels' => ['mail'],
+            'severity_threshold' => 'medium',
+            'recipients' => [],
+            'rate_limit_minutes' => 5,
+        ]);
+
+        $event = new IpBlocked('10.0.0.14', 'SQLi', 1440, 1, 'sql_injection');
+        $listener = new SendSecurityAlert();
+        $listener->handle($event);
+
+        Config::set('crowdsec-scenarios.notifications.recipients', ['admin@example.com']);
+        $listener->handle($event);
+
+        Notification::assertSentToTimes(
+            Notification::route('mail', ['admin@example.com']),
+            SecurityAlertNotification::class,
+            1,
+        );
+    }
+
     // =========================================================================
     // HONEYPOT TRAP MIDDLEWARE
     // =========================================================================
@@ -499,16 +525,15 @@ class NewFeaturesTest extends TestCase
     public function test_geoip_caches_result(): void
     {
         Http::fake([
-            'ip-api.com/*' => Http::response([
-                'status' => 'success',
+            'ipwho.is/*' => Http::response([
+                'success' => true,
                 'country' => 'United States',
-                'countryCode' => 'US',
-                'regionName' => 'California',
+                'country_code' => 'US',
+                'region' => 'California',
                 'city' => 'San Francisco',
-                'lat' => 37.7749,
-                'lon' => -122.4194,
-                'as' => 'AS15169 Google LLC',
-                'isp' => 'Test ISP',
+                'latitude' => 37.7749,
+                'longitude' => -122.4194,
+                'connection' => ['asn' => 15169, 'isp' => 'Test ISP'],
             ]),
         ]);
 
@@ -529,6 +554,7 @@ class NewFeaturesTest extends TestCase
 
     public function test_geoip_handles_api_failure(): void
     {
+        Config::set('crowdsec-scenarios.geoip.provider', 'ip-api');
         Http::fake([
             'ip-api.com/*' => Http::response(['status' => 'fail'], 200),
         ]);
@@ -542,6 +568,7 @@ class NewFeaturesTest extends TestCase
 
     public function test_geoip_handles_http_error(): void
     {
+        Config::set('crowdsec-scenarios.geoip.provider', 'ip-api');
         Http::fake([
             'ip-api.com/*' => Http::response('Server Error', 500),
         ]);
@@ -573,6 +600,33 @@ class NewFeaturesTest extends TestCase
         $result = $geoip->lookup('8.8.8.8');
 
         $this->assertEquals('TestLand', $result['country']);
+        $this->assertNull($result['asn']);
+    }
+
+    public function test_geoip_cache_is_separated_by_provider(): void
+    {
+        Http::fake([
+            'ipwho.is/*' => Http::response([
+                'success' => true,
+                'country' => 'HTTPS Provider',
+                'connection' => ['asn' => 64500, 'isp' => 'HTTPS ISP'],
+            ]),
+            'ip-api.com/*' => Http::response([
+                'status' => 'success',
+                'country' => 'Legacy Provider',
+                'as' => 'AS64501 Legacy ISP',
+            ]),
+        ]);
+        Cache::flush();
+        $geoip = new GeoIpService();
+
+        $https = $geoip->lookup('8.8.8.8');
+        Config::set('crowdsec-scenarios.geoip.provider', 'ip-api');
+        $legacy = $geoip->lookup('8.8.8.8');
+
+        $this->assertSame('HTTPS Provider', $https['country']);
+        $this->assertSame('Legacy Provider', $legacy['country']);
+        Http::assertSentCount(2);
     }
 
     // =========================================================================

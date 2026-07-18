@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 18 Jul 2026
-> **Test suite:** 217 passed (435 assertions)
-> **Next focus:** monitor `v1.1.1` adoption and Packagist synchronization
+> Last updated: 19 Jul 2026
+> **Test suite:** 237 passed (480 assertions)
+> **Next focus:** validate the unreleased `v1.2.0` changes across the GitHub Actions matrix
 
 ---
 
@@ -61,6 +61,8 @@
 - [x] Atomic per-IP counter dan threat-score updates dengan transaction locking
 - [x] Login WAF tetap memeriksa query dan field body non-secret
 - [x] Autentikasi sukses hanya mereset login window secara default; unblock dan threat reset opt-in
+- [x] Login threshold mengizinkan configured allowance dan memblokir request berikutnya
+- [x] Provisional middleware login tracking tidak menambah threat score
 
 ### Data Layer
 
@@ -97,6 +99,7 @@
 - [x] `SecurityAlertNotification` — mail, Slack, array channels (ShouldQueue)
 - [x] `SendSecurityAlert` listener — severity filtering + rate limiting
 - [x] Konfigurasi: channels, severity threshold, rate limit, recipients
+- [x] Atomic notification cooldown dengan `Cache::add()` setelah route tervalidasi
 
 ### Honeypot Routes
 
@@ -116,11 +119,16 @@
 
 - [x] `registerScenario()` — register custom detection scenario at runtime
 - [x] `getScenarios()` — list all registered scenarios (built-in + custom)
+- [x] WAF mode per scenario: `enforce`, `monitor`, dan `disabled`
+- [x] Granular exclusions berdasarkan route name, path, method, scenario, dan dotted body field
+- [x] Monitor events dicatat tanpa threat score atau blocking
 
 ### GeoIP Integration
 
 - [x] `GeoIpService` — IP geolocation lookup
 - [x] `ip-api.com` provider (free, no API key required)
+- [x] HTTPS `ipwho.is` provider sebagai default konfigurasi baru
+- [x] Legacy `ip-api` warning dan provider-specific cache keys
 - [x] Result caching (24h default)
 - [x] Custom callback provider support
 - [x] Private IP detection (skip lookup)
@@ -182,25 +190,29 @@
 - [x] Event context config (request ID, UA parsing, HMAC user, sensitive parameter redaction)
 - [x] API config (enabled, middleware)
 - [x] Dashboard config (enabled, path, middleware)
+- [x] WAF policy config (default mode, scenario overrides, granular exclusions)
 
 ### CI/CD
 
 - [x] GitHub Actions CI pipeline (`.github/workflows/tests.yml`)
 - [x] Matrix eksplisit Laravel 10/Testbench 8, Laravel 11/Testbench 9, Laravel 12/Testbench 10
+- [x] PHP 8.4 matrix untuk Laravel 10/11/12
 - [x] Composer dependency caching
 - [x] SQLite for testing
 - [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 5 seluruh source
+- [x] Guarded manual release workflow (metadata, CI, tag, dan GitHub Release)
 
 ### Testing
 
-- [x] 27 unit test cases (PHPUnit + Orchestra Testbench)
+- [x] 31 unit test cases (PHPUnit + release metadata validator)
 - [x] 22 integration test cases (`CrowdSecMiddlewareTest` — full 10-step pipeline)
 - [x] 20 edge case tests (`EdgeCaseTest` — CIDR, escalation, body analysis, etc.)
 - [x] 8 performance benchmarks (all < 1ms target)
 - [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
 - [x] Security event context coverage (enforcement, privacy, API, export, GeoIP, UA, HMAC)
 - [x] 10 reliability hardening tests (fixed windows, nested login inspection, auth defaults, rate limiting)
-- [x] Total: **217 tests, 435 assertions**
+- [x] WAF policy, GeoIP HTTPS, release validator, login semantics, dan atomic notification coverage
+- [x] Total: **237 tests, 480 assertions**
 
 ### Documentation
 
@@ -217,6 +229,8 @@
 
 - [x] **Validate the full CI matrix** — Laravel 10/11/12 compatibility passed on GitHub Actions
 - [x] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
+- [ ] **Validate `v1.2.0` on GitHub Actions** — confirm PHP 8.4 and all Laravel compatibility jobs
+- [ ] **Prepare `v1.2.0` release metadata** — update stable version only after the matrix succeeds
 
 ### Future Enhancements (v1.1+)
 
@@ -230,19 +244,19 @@
 
 | Metric                 | Value      |
 | ---------------------- | ---------- |
-| Total source files     | 29         |
-| Total lines of code    | ~4,200     |
+| Total source files     | 30         |
+| Total lines of code    | ~4,500     |
 | Attack types detected  | 15         |
 | Regex patterns         | 100+       |
-| Unit tests             | 27         |
+| Unit tests             | 31         |
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Total tests**        | **217**    |
-| Test assertions        | 435        |
+| **Total tests**        | **237**    |
+| Test assertions        | 480        |
 | Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
-| Package status         | Stable on Packagist |
+| Package status         | v1.1.1 stable; v1.2.0 in development |
 | CI quality gates       | PHPUnit + Larastan/PHPStan level 5 + Composer audit |
 
 ---
@@ -250,6 +264,7 @@
 ## 📝 Git History
 
 ```
+b4f2401  docs: prepare v1.1.1 release
 37bd253  fix: harden behavior tracking reliability
 1271b68  docs: add AI installation guide
 0430a1a  docs: fix Packagist license badge
@@ -279,5 +294,4 @@ ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
 4222fc7  docs: track docs/ directory and update PRD + PROGRESS
 43758db  docs: update PRD, PROGRESS, and README with all resolved features
 6bec6f2  feat: add admin security dashboard (#12) (#33)
-d346a44  feat: add REST API endpoints for CrowdSec (#14) (#32)
 ```

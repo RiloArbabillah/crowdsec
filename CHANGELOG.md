@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **WAF Policy Controls** — scenarios support `enforce`, `monitor`, and `disabled` modes plus route, path, method, scenario, and dotted body-field exclusions
+- **HTTPS GeoIP Provider** — new `ipwhois` provider is the default for newly published configuration while legacy `ip-api` and custom callbacks remain supported
+- **Release Automation** — a guarded manual workflow validates metadata and CI before creating an annotated tag and GitHub Release from the changelog
+
+### Changed
+
+- **PHP 8.4 Validation** — CI now covers PHP 8.4 across Laravel 10, 11, and 12
+- **Threat Contract** — detected threat arrays include an additive `mode` field, and monitored events use the `monitored` action without scoring or blocking
+- **GeoIP Cache Isolation** — cached lookups are separated by provider and all provider responses are normalized to the existing result shape
+
+### Fixed
+
+- **Login Threshold Semantics** — the configured allowance is processed before the following request is blocked, and provisional middleware tracking no longer raises threat score for a potentially valid login
+- **Notification Deduplication** — alert cooldown acquisition is atomic and is only consumed when a usable notification route exists
+- **Release Metadata** — README now identifies `v1.1.1` as the latest stable release
+
+### Security
+
+- **Narrow False-Positive Tuning** — exclusions affect only selected WAF scenarios or body fields and never bypass active blocks or behavior protection
+- **GeoIP Transport Privacy** — the default provider now uses HTTPS; the doctor command warns when the legacy HTTP provider is enabled
+
 ## [1.1.1] - 2026-07-18
 
 ### Added

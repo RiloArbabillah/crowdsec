@@ -46,6 +46,7 @@ class CrowdSecService
         'audit',
         'dashboard',
         'event_context',
+        'waf',
     ];
 
     protected SecurityEventContextService $eventContext;
@@ -173,6 +174,14 @@ class CrowdSecService
     {
         $threats = [];
         $inputsToCheck = [];
+        $wafConfig = is_array($this->scenarios['waf'] ?? null) ? $this->scenarios['waf'] : [];
+        $policy = new WafPolicy($wafConfig);
+        $exclusions = $policy->exclusionsFor($request);
+        $excludedBodyFields = array_values(array_unique(array_merge(
+            $excludedBodyFields,
+            $exclusions['ignored_body_fields'],
+        )));
+        $skippedScenarios = $exclusions['skipped_scenarios'];
 
         // Collect all inputs to check
         $inputsToCheck['query'] = $request->getQueryString() ?? '';
@@ -215,6 +224,11 @@ class CrowdSecService
                     continue;
                 }
 
+                $mode = $policy->modeFor($scenarioName, $config);
+                if ($mode === WafPolicy::MODE_DISABLED || $policy->skipsScenario($scenarioName, $skippedScenarios)) {
+                    continue;
+                }
+
                 // Route patterns to correct sources
                 if (! $this->shouldCheckScenario($scenarioName, $source)) {
                     continue;
@@ -232,6 +246,7 @@ class CrowdSecService
                                 'matched' => Str::limit($input, 100),
                                 'severity' => $config['severity'] ?? 'medium',
                                 'weight' => $config['weight'] ?? 5,
+                                'mode' => $mode,
                             ];
                             $matched = true;
                             break; // Stop checking decoded versions
@@ -251,7 +266,21 @@ class CrowdSecService
         // Deep inspection: JWT payloads
         $threats = array_merge($threats, $this->inspectJwtPayloads($request));
 
-        return $threats;
+        return array_values(array_filter(array_map(
+            function (array $threat) use ($policy, $skippedScenarios): ?array {
+                $type = (string) ($threat['type'] ?? 'unknown');
+                $mode = $threat['mode'] ?? $policy->modeFor($type);
+
+                if ($mode === WafPolicy::MODE_DISABLED || $policy->skipsScenario($type, $skippedScenarios)) {
+                    return null;
+                }
+
+                $threat['mode'] = $mode;
+
+                return $threat;
+            },
+            $threats,
+        )));
     }
 
     /**
@@ -548,7 +577,17 @@ class CrowdSecService
         }
 
         foreach ($data as $key => $value) {
-            if (in_array(strtolower((string) $key), $excludedFields, true)) {
+            $normalizedKey = strtolower((string) $key);
+            $normalizedPath = strtolower(str_replace(['][', '[', ']'], ['.', '.', ''], (string) ($prefix ? "{$prefix}[{$key}]" : $key)));
+            $isExcluded = collect($excludedFields)->contains(function ($pattern) use ($normalizedKey, $normalizedPath): bool {
+                $pattern = strtolower(trim((string) $pattern));
+
+                return $pattern !== '' && (str_contains($pattern, '.') || str_contains($pattern, '*')
+                    ? Str::is($pattern, $normalizedPath)
+                    : $pattern === $normalizedKey);
+            });
+
+            if ($isExcluded) {
                 continue;
             }
 
@@ -627,10 +666,10 @@ class CrowdSecService
     /**
      * Track login attempt for an IP
      */
-    public function trackLoginAttempt(string $ip): IpBehavior
+    public function trackLoginAttempt(string $ip, bool $addThreatScore = true): IpBehavior
     {
         $behavior = IpBehavior::getOrCreate($ip);
-        $behavior->incrementLoginAttempts();
+        $behavior->incrementLoginAttempts($addThreatScore);
 
         return $behavior;
     }
@@ -640,11 +679,16 @@ class CrowdSecService
      */
     public function addThreatScoreFromThreats(string $ip, array $threats): void
     {
-        if (empty($threats)) {
+        $enforcedThreats = array_filter(
+            $threats,
+            fn ($threat) => ($threat['mode'] ?? WafPolicy::MODE_ENFORCE) === WafPolicy::MODE_ENFORCE,
+        );
+
+        if (empty($enforcedThreats)) {
             return;
         }
 
-        $totalWeight = array_sum(array_column($threats, 'weight'));
+        $totalWeight = array_sum(array_column($enforcedThreats, 'weight'));
         IpBehavior::withLock($ip, function (IpBehavior $behavior) use ($totalWeight): void {
             $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + $totalWeight));
             $behavior->setAttribute('last_activity', now());
@@ -892,7 +936,8 @@ class CrowdSecService
      */
     public function getBlockingThreats(array $threats): array
     {
-        return array_filter($threats, fn ($t) => in_array(($t['severity'] ?? 'medium'), ['critical', 'high', 'medium']));
+        return array_filter($threats, fn ($t) => ($t['mode'] ?? WafPolicy::MODE_ENFORCE) === WafPolicy::MODE_ENFORCE
+            && in_array(($t['severity'] ?? 'medium'), ['critical', 'high', 'medium'], true));
     }
 
     /**

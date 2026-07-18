@@ -35,19 +35,16 @@ class SendSecurityAlert
             return;
         }
 
-        // Rate limiting: max 1 notification per IP per 5 minutes
-        $rateLimitMinutes = $config['rate_limit_minutes'] ?? 5;
-        $cacheKey = "crowdsec:notify:{$event->ip}";
-
-        if (Cache::has($cacheKey)) {
-            return;
-        }
-
-        Cache::put($cacheKey, true, now()->addMinutes($rateLimitMinutes));
-
         $routes = $this->notificationRoutes($config);
 
         if (empty($routes)) {
+            return;
+        }
+
+        // Cache::add is atomic on supported shared cache stores.
+        $rateLimitMinutes = max(1, (int) ($config['rate_limit_minutes'] ?? 5));
+        $cacheKey = "crowdsec:notify:{$event->ip}";
+        if (! Cache::add($cacheKey, true, now()->addMinutes($rateLimitMinutes))) {
             return;
         }
 

@@ -52,7 +52,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 - Laravel `^10.0`, `^11.0`, or `^12.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
-The latest stable package release is `v1.1.0`.
+The latest stable package release is `v1.1.1`.
 
 ## Quick Start
 
@@ -189,6 +189,8 @@ public function login(Request $request)
 }
 ```
 
+Use manual `trackLoginAttempt()` calls only when the route is not already listed in `login_routes`; combining both mechanisms counts the same failed request twice. Automatic middleware tracking records a provisional attempt without threat score, allows the configured number of requests, and blocks the following request when the counter was not reset by successful authentication.
+
 Successful Laravel authentication resets only the IP's login-attempt counter and login window. Existing threat scores and active blocks are preserved by default. Automatic threat-score reset and unblocking are explicit configuration opt-ins.
 
 ### Analyze a request
@@ -219,6 +221,7 @@ CrowdSec::registerScenario('api_abuse', [
     'severity' => 'high',
     'weight' => 30,
     'block_duration' => 720,
+    'mode' => 'monitor',
 ]);
 ```
 
@@ -231,6 +234,22 @@ After publishing the configuration, edit `config/crowdsec-scenarios.php`. The mo
 ```php
 return [
     'enabled' => env('CROWDSEC_ENABLED', true),
+
+    'waf' => [
+        'default_mode' => 'enforce',
+        'scenario_modes' => [
+            // 'sql_injection' => 'monitor',
+        ],
+        'exclusions' => [
+            [
+                'route_names' => ['webhooks.provider'],
+                'paths' => ['webhooks/provider'],
+                'methods' => ['POST'],
+                'skip_scenarios' => ['sql_injection'],
+                'ignore_body_fields' => ['payload.signature'],
+            ],
+        ],
+    ],
 
     'whitelist_ips' => [
         '127.0.0.1',
@@ -259,6 +278,8 @@ return [
 ];
 ```
 
+Scenario mode `enforce` preserves normal scoring and blocking. `monitor` records and dispatches the detection with action `monitored` but does not score or block, while `disabled` omits the scenario entirely. An exclusion rule matches only when every non-empty selector group matches; entries within a group support wildcards and use OR semantics. Exclusions skip only the listed scenarios or dotted body fields. Existing IP blocks and behavior thresholds remain enforced.
+
 Request, 404, and login counters use independent fixed windows. Login requests are still inspected by the WAF, but configured secret fields are excluded from body inspection. Query parameters, paths, headers, cookies, uploads, JWT data, and non-secret body fields remain protected.
 
 The `crowdsec.rate` middleware uses Laravel's atomic rate limiter and returns `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers based on the actual limiter state.
@@ -279,7 +300,7 @@ The `crowdsec.rate` middleware uses Laravel's atomic rate limiter and returns `R
 | `CROWDSEC_NOTIFY_RECIPIENTS` | Empty | Comma-separated mail recipients |
 | `CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL` | Empty | Slack incoming webhook URL |
 | `CROWDSEC_GEOIP_ENABLED` | `false` | Enable GeoIP enrichment |
-| `CROWDSEC_GEOIP_PROVIDER` | `ip-api` | Use `ip-api` or a configured custom provider |
+| `CROWDSEC_GEOIP_PROVIDER` | `ipwhois` | Use HTTPS `ipwhois`, legacy `ip-api`, or a configured custom provider |
 | `CROWDSEC_GEOIP_TIMEOUT` | `2` | GeoIP request timeout in seconds |
 | `CROWDSEC_REQUEST_ID_HEADER` | `X-Request-ID` | Header used for request correlation |
 | `CROWDSEC_PARSE_USER_AGENT` | `true` | Parse browser, OS, and device type |
@@ -349,15 +370,15 @@ php artisan vendor:publish --tag=crowdsec-views
 
 ### GeoIP enrichment
 
-Enable the default `ip-api.com` provider with:
+Enable the default HTTPS `ipwho.is` provider with:
 
 ```env
 CROWDSEC_GEOIP_ENABLED=true
-CROWDSEC_GEOIP_PROVIDER=ip-api
+CROWDSEC_GEOIP_PROVIDER=ipwhois
 CROWDSEC_GEOIP_TIMEOUT=2
 ```
 
-Results are cached for 24 hours. Private addresses are not sent to the provider. Review the provider's availability, privacy, and usage terms before enabling it in production.
+Results are cached for 24 hours with provider-specific keys. Private addresses are not sent to the provider. The legacy `ip-api` provider remains available for existing installations but uses unencrypted HTTP and produces a doctor warning. Review the selected provider's availability, privacy, and usage terms before enabling it in production.
 
 ### Audit logging
 
@@ -516,7 +537,9 @@ composer analyse
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, runs a Composer security audit, and enforces Larastan/PHPStan level 5 across all package source and route files.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, runs a Composer security audit, and enforces Larastan/PHPStan level 5 across all package source and route files.
+
+Stable releases use the manual `Release` workflow. It requires matching README and CHANGELOG metadata, a successful `Tests` run on the current `master` commit, and passing release quality gates before it creates an annotated tag and GitHub Release.
 
 Laravel 10 remains package-compatible, but it is end-of-life. Compatibility does not imply active framework security support; production applications should use a Laravel version that still receives security updates.
 

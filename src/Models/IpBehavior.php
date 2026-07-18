@@ -90,16 +90,19 @@ class IpBehavior extends Model
         });
     }
 
-    public function incrementLoginAttempts(): void
+    public function incrementLoginAttempts(bool $addThreatScore = true): void
     {
-        $this->syncFromLockedMutation(function (self $behavior): void {
+        $this->syncFromLockedMutation(function (self $behavior) use ($addThreatScore): void {
             $behavior->incrementWindowCounter(
                 'login_attempts',
                 'login_window_started_at',
                 (int) config('crowdsec-scenarios.behavior.login_window_minutes', 5),
             );
-            $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + 10));
-            $behavior->save();
+
+            if ($addThreatScore) {
+                $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + 10));
+                $behavior->save();
+            }
         });
     }
 

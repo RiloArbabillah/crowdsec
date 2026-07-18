@@ -217,6 +217,52 @@ class DoctorCommandTest extends TestCase
         $this->assertLessThanOrEqual(100, $score);
     }
 
+    public function test_doctor_rejects_invalid_waf_mode_and_empty_exclusion(): void
+    {
+        config([
+            'crowdsec-scenarios.waf.default_mode' => 'invalid',
+            'crowdsec-scenarios.waf.exclusions' => [['paths' => ['example']]],
+            'crowdsec-scenarios.sql_injection.mode' => 'also-invalid',
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('WAF policy')
+            ->assertFailed();
+    }
+
+    public function test_doctor_warns_for_legacy_http_geoip_provider(): void
+    {
+        config([
+            'crowdsec-scenarios.geoip.enabled' => true,
+            'crowdsec-scenarios.geoip.provider' => 'ip-api',
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('unencrypted HTTP')
+            ->assertSuccessful();
+    }
+
+    public function test_doctor_rejects_unknown_geoip_provider(): void
+    {
+        config([
+            'crowdsec-scenarios.geoip.enabled' => true,
+            'crowdsec-scenarios.geoip.provider' => 'unknown',
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('Unsupported provider')
+            ->assertFailed();
+    }
+
+    public function test_doctor_rejects_non_array_waf_config(): void
+    {
+        config(['crowdsec-scenarios.waf' => 'invalid']);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('waf must be an array')
+            ->assertFailed();
+    }
+
     public function test_doctor_command_has_minimum_12_checks(): void
     {
         $doctor = new \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecDoctor();

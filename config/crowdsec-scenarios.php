@@ -31,6 +31,23 @@ return [
     // Blocked HTTP methods (these are never legitimate in web apps)
     'blocked_methods' => ['TRACE', 'CONNECT'],
 
+    // WAF enforcement modes and narrowly-scoped false-positive exclusions.
+    'waf' => [
+        'default_mode' => 'enforce', // enforce, monitor, disabled
+        'scenario_modes' => [
+            // 'sql_injection' => 'monitor',
+        ],
+        'exclusions' => [
+            // [
+            //     'route_names' => ['webhooks.provider'],
+            //     'paths' => ['webhooks/provider'],
+            //     'methods' => ['POST'],
+            //     'skip_scenarios' => ['sql_injection'],
+            //     'ignore_body_fields' => ['payload.signature'],
+            // ],
+        ],
+    ],
+
     // =========================================================================
     // PATTERN-BASED SCENARIOS
     // =========================================================================
@@ -489,7 +506,7 @@ return [
 
     'geoip' => [
         'enabled' => env('CROWDSEC_GEOIP_ENABLED', false),
-        'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ip-api'), // 'ip-api', 'custom'
+        'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ipwhois'), // 'ipwhois', 'ip-api' (legacy), 'custom'
         'cache_ttl' => 86400, // Cache GeoIP results for 24 hours
         'timeout' => env('CROWDSEC_GEOIP_TIMEOUT', 2),
         'custom_callback' => null, // callable for custom provider

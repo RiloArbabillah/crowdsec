@@ -188,6 +188,10 @@ Successful authentication resets only the login-attempt counter and its fixed wi
 
 Login POST requests remain subject to WAF inspection. Password fields are excluded by default, while query parameters, paths, headers, cookies, uploads, JWT data, and non-secret body fields remain inspected. Preserve or extend `behavior.login_ignored_fields` when an application uses additional credential field names.
 
+Do not add a manual `trackLoginAttempt()` call to a route already configured in `login_routes`; doing both counts one failed request twice. The middleware allows the configured number of provisional login requests and blocks the following request unless successful authentication resets the window.
+
+When legitimate input triggers a scenario, prefer a narrow `waf.exclusions` rule tied to route name or path, method, scenario, and dotted body field. Use `monitor` mode to validate a scenario against production-like traffic before enforcement. Never disable the complete package to resolve one false positive, and verify that active blocks and behavior thresholds still apply.
+
 ## Optional Features
 
 Enable optional features only when requested and only after validating their prerequisites.
@@ -203,6 +207,8 @@ Enable optional features only when requested and only after validating their pre
 | Dashboard | `CROWDSEC_DASHBOARD_ENABLED=true` | Keep `web` and authenticated middleware |
 
 Run `php artisan crowdsec:doctor` after enabling any optional feature. Do not remove an authentication warning merely to make the doctor command pass.
+
+New configurations use the HTTPS `ipwhois` GeoIP provider. Preserve an application's explicit legacy `ip-api` selection during an unrelated installation, but report the doctor's unencrypted-transport warning and recommend a planned migration to `ipwhois`.
 
 ### Notifications
 

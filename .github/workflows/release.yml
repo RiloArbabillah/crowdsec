@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version in vX.Y.Z format
+        required: true
+        type: string
+      title:
+        description: GitHub Release title
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Verify latest master CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head_sha="$(git rev-parse HEAD)"
+          test "$head_sha" = "$(git rev-parse origin/master)"
+          successful_runs="$(gh run list --workflow tests.yml --commit "$head_sha" --status success --limit 1 --json databaseId --jq length)"
+          test "$successful_runs" = "1"
+
+      - name: Validate release metadata
+        env:
+          VERSION: ${{ inputs.version }}
+        run: php tools/validate-release.php "$VERSION" /tmp/crowdsec-release-notes.md
+
+      - name: Ensure tag and release do not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          ! git show-ref --verify --quiet "refs/tags/$VERSION"
+          ! gh release view "$VERSION"
+
+      - name: Run release quality gates
+        run: |
+          composer validate --strict
+          composer audit
+          composer analyse
+          composer test
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TITLE: ${{ inputs.title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$RELEASE_TITLE"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --verify-tag --latest --title "$RELEASE_TITLE" --notes-file /tmp/crowdsec-release-notes.md

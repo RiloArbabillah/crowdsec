@@ -43,6 +43,7 @@ class CrowdSecDoctor extends Command
         $this->checkPackageEnabled();
         $this->checkDatabaseMigrations();
         $this->checkRegexPatterns();
+        $this->checkWafConfig();
         $this->checkCacheConnection();
         $this->checkNotifications();
         $this->checkGeoIpProvider();
@@ -214,8 +215,88 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $provider = config('crowdsec-scenarios.geoip.provider', 'ip-api');
-        $this->addResult('GeoIP lookup', 'pass', "Provider: {$provider}");
+        $provider = strtolower((string) config('crowdsec-scenarios.geoip.provider', 'ipwhois'));
+
+        if (! in_array($provider, ['ipwhois', 'ip-api', 'custom'], true)) {
+            $this->addResult('GeoIP lookup', 'fail', "Unsupported provider: {$provider}", 10);
+        } elseif ($provider === 'ip-api') {
+            $this->addResult('GeoIP lookup', 'warn', 'Legacy ip-api provider uses unencrypted HTTP; migrate to ipwhois', 5);
+        } elseif ($provider === 'custom' && ! is_callable(config('crowdsec-scenarios.geoip.custom_callback'))) {
+            $this->addResult('GeoIP lookup', 'fail', 'Custom provider requires a callable custom_callback', 10);
+        } else {
+            $this->addResult('GeoIP lookup', 'pass', "Provider: {$provider}");
+        }
+    }
+
+    protected function checkWafConfig(): void
+    {
+        $configuredWaf = config('crowdsec-scenarios.waf', []);
+        $waf = is_array($configuredWaf) ? $configuredWaf : [];
+        $validModes = \RiloArbabillah\LaravelCrowdSec\Services\WafPolicy::VALID_MODES;
+        $invalid = is_array($configuredWaf) ? [] : ['waf must be an array'];
+
+        $defaultMode = strtolower((string) ($waf['default_mode'] ?? 'enforce'));
+        if (! in_array($defaultMode, $validModes, true)) {
+            $invalid[] = "default_mode={$defaultMode}";
+        }
+
+        $scenarioModes = is_array($waf['scenario_modes'] ?? null) ? $waf['scenario_modes'] : [];
+        if (isset($waf['scenario_modes']) && ! is_array($waf['scenario_modes'])) {
+            $invalid[] = 'scenario_modes must be an array';
+        }
+
+        foreach ($scenarioModes as $scenario => $mode) {
+            if (! in_array(strtolower((string) $mode), $validModes, true)) {
+                $invalid[] = "scenario_modes.{$scenario}={$mode}";
+            }
+        }
+
+        foreach (config('crowdsec-scenarios', []) as $scenario => $scenarioConfig) {
+            if (! is_array($scenarioConfig) || ! array_key_exists('mode', $scenarioConfig)) {
+                continue;
+            }
+
+            if (! in_array(strtolower((string) $scenarioConfig['mode']), $validModes, true)) {
+                $invalid[] = "{$scenario}.mode={$scenarioConfig['mode']}";
+            }
+        }
+
+        $exclusions = is_array($waf['exclusions'] ?? null) ? $waf['exclusions'] : [];
+        if (isset($waf['exclusions']) && ! is_array($waf['exclusions'])) {
+            $invalid[] = 'exclusions must be an array';
+        }
+
+        foreach ($exclusions as $index => $rule) {
+            if (! is_array($rule)) {
+                $invalid[] = "exclusions.{$index} must be an array";
+                continue;
+            }
+
+            foreach (['route_names', 'paths', 'methods', 'skip_scenarios', 'ignore_body_fields'] as $key) {
+                if (isset($rule[$key]) && ! is_array($rule[$key])) {
+                    $invalid[] = "exclusions.{$index}.{$key} must be an array";
+                }
+            }
+
+            $hasEffect = (is_array($rule['skip_scenarios'] ?? null) && ! empty($rule['skip_scenarios']))
+                || (is_array($rule['ignore_body_fields'] ?? null) && ! empty($rule['ignore_body_fields']));
+            if (! $hasEffect) {
+                $invalid[] = "exclusions.{$index} has no effect";
+            }
+
+            foreach (is_array($rule['methods'] ?? null) ? $rule['methods'] : [] as $method) {
+                if (preg_match('/\A[A-Z]+\z/', strtoupper((string) $method)) !== 1) {
+                    $invalid[] = "exclusions.{$index} has invalid method";
+                    break;
+                }
+            }
+        }
+
+        if ($invalid === []) {
+            $this->addResult('WAF policy', 'pass', 'Modes and exclusions are valid');
+        } else {
+            $this->addResult('WAF policy', 'fail', implode('; ', $invalid), 10);
+        }
     }
 
     protected function checkApiConfig(): void

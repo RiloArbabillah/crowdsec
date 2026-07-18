@@ -231,25 +231,28 @@ class CrowdSecMiddlewareTest extends TestCase
         $ip = '203.0.113.70';
         $loginThreshold = Config::get('crowdsec-scenarios.behavior.login_threshold', 5);
 
-        for ($i = 0; $i <= $loginThreshold; $i++) {
+        for ($i = 0; $i < $loginThreshold; $i++) {
             $response = $this->sendRequest('/login', 'POST', [], ['REMOTE_ADDR' => $ip]);
+            $this->assertEquals(200, $response->getStatusCode());
         }
 
-        // After exceeding threshold, should be blocked
+        $response = $this->sendRequest('/login', 'POST', [], ['REMOTE_ADDR' => $ip]);
+
+        // The request after the configured allowance is blocked.
         $this->assertEquals(403, $response->getStatusCode());
         $this->assertDatabaseHas('blocked_ips', ['ip' => $ip]);
     }
 
-    public function test_login_route_skips_waf_patterns(): void
+    public function test_login_route_excludes_password_but_keeps_waf_active(): void
     {
-        // Login POST should skip WAF (passwords may contain SQL-like patterns)
+        // Passwords may legitimately contain SQL-like patterns.
         $ip = '203.0.113.71';
         $response = $this->sendRequest('/login', 'POST', [
             'email' => 'user@test.com',
             'password' => "OR 1=1 -- valid_password_that_looks_like_sqli",
         ], ['REMOTE_ADDR' => $ip]);
 
-        // Should pass (login routes skip WAF patterns for password fields)
+        // The configured password field is excluded while other sources remain inspected.
         $this->assertEquals(200, $response->getStatusCode());
     }
 
