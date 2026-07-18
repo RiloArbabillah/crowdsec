@@ -2,7 +2,7 @@
 
 > Last updated: 18 Jul 2026
 > **Test suite:** 217 passed (435 assertions)
-> **Next focus:** validate and release `v1.1.1` reliability hardening
+> **Next focus:** monitor `v1.1.1` adoption and Packagist synchronization
 
 ---
 
@@ -215,8 +215,8 @@
 
 ### Next Steps
 
-- [ ] **Validate the full CI matrix** — confirm Laravel 10/11/12 compatibility on GitHub Actions
-- [ ] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
+- [x] **Validate the full CI matrix** — Laravel 10/11/12 compatibility passed on GitHub Actions
+- [x] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
 
 ### Future Enhancements (v1.1+)
 
@@ -250,6 +250,7 @@
 ## 📝 Git History
 
 ```
+37bd253  fix: harden behavior tracking reliability
 1271b68  docs: add AI installation guide
 0430a1a  docs: fix Packagist license badge
 7e6b336  docs: modernize project readme
@@ -279,5 +280,4 @@ ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
 43758db  docs: update PRD, PROGRESS, and README with all resolved features
 6bec6f2  feat: add admin security dashboard (#12) (#33)
 d346a44  feat: add REST API endpoints for CrowdSec (#14) (#32)
-b4f2add  feat: add GeoIP lookup service (#13) (#31)
 ```

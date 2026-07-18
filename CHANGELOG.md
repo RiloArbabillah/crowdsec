@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-18
+
+### Added
+
+- **Independent Behavior Windows** — request, 404, and login counters now use dedicated fixed-window timestamps with configurable 60/60/5 minute defaults
+- **AI Installation Contract** — a separate repository-aware installation guide documents secure defaults, migration checks, and verification requirements for coding agents
+
+### Changed
+
+- **Authentication Defaults** — successful authentication resets only the login counter and window; automatic unblocking and threat-score resets are explicit opt-ins
+- **Login Inspection** — login requests remain subject to WAF analysis while configured password fields, including nested fields, are excluded from body inspection
+- **Route Rate Limiting** — `crowdsec.rate` uses Laravel's atomic rate limiter and reports actual `Retry-After` and `X-RateLimit-Reset` values
+- **Quality Gates** — Larastan/PHPStan level 5 covers all source and route files, and CI explicitly maps Laravel 10/11/12 to compatible Testbench versions
+
+### Fixed
+
+- **Concurrent Behavior Updates** — per-IP counters, threat scores, and progressive block escalation are serialized to prevent lost updates under concurrent requests
+- **Window Expiration** — behavior thresholds are evaluated against their own fixed-window start instead of unrelated recent activity
+- **Block Duration Accessor** — block duration remains an integer under Carbon 3
+
+### Security
+
+- **Secret-Aware Login WAF** — query parameters, paths, headers, cookies, uploads, JWT data, and non-secret login fields remain inspected without scanning configured credentials
+- **Secure Reauthentication** — an existing security block or threat score is no longer cleared merely because authentication succeeds
+
 ## [1.1.0] - 2026-07-14
 
 ### Added
