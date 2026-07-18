@@ -8,11 +8,14 @@ Laravel CrowdSec is a lightweight, application-layer Web Application Firewall (W
 
 It is designed as an additional layer of protection for Laravel applications. It does not replace infrastructure controls such as a reverse-proxy WAF, DDoS protection, network filtering, or secure application code.
 
+Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_AI.md) for a repository-aware, verified setup workflow.
+
 ## Contents
 
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
+- [AI-Assisted Installation](README_AI.md)
 - [Protecting Routes](#protecting-routes)
 - [Programmatic Usage](#programmatic-usage)
 - [Configuration](#configuration)
