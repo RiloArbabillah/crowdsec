@@ -4,246 +4,153 @@
 [![PHP Version](https://img.shields.io/packagist/php-v/rilo-arbabillah/laravel-crowdsec.svg)](https://packagist.org/packages/rilo-arbabillah/laravel-crowdsec)
 [![License](https://img.shields.io/packagist/license/rilo-arbabillah/laravel-crowdsec.svg)](LICENSE)
 
-A lightweight, CrowdSec-like Web Application Firewall (WAF) protection package for Laravel applications. This package provides real-time threat detection and IP blocking based on WAF patterns and behavior analysis.
+Laravel CrowdSec is a lightweight, application-layer Web Application Firewall (WAF) for Laravel. It detects common web attacks, tracks suspicious behavior, blocks abusive IP addresses, and records security events without requiring a separate proxy or security agent.
 
-## Release Status
+It is designed as an additional layer of protection for Laravel applications. It does not replace infrastructure controls such as a reverse-proxy WAF, DDoS protection, network filtering, or secure application code.
 
-- Latest stable Packagist release: `v1.1.0`
-- Stable compatibility: Laravel `^10.0|^11.0|^12.0` with the current hardening and CI updates
+## Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Protecting Routes](#protecting-routes)
+- [Programmatic Usage](#programmatic-usage)
+- [Configuration](#configuration)
+- [Optional Features](#optional-features)
+- [Artisan Commands](#artisan-commands)
+- [Scheduled Maintenance](#scheduled-maintenance)
+- [Detection Coverage](#detection-coverage)
+- [Database Tables](#database-tables)
+- [Production Checklist](#production-checklist)
+- [Development](#development)
+- [Security](#security)
+- [License](#license)
 
 ## Features
 
-- **WAF Pattern Detection**: Detects SQL injection, XSS, path traversal, command injection, and 11 more attack types
-- **IP Blocking**: Temporary IP blocks with automatic expiration and progressive escalation
-- **Behavior-based Protection**: Rate limiting, brute-force detection, and threat score tracking with auto-decay
-- **Caching Layer**: Cached blocked IP lookups for high-traffic applications
-- **Event System**: 4 Laravel events (ThreatDetected, IpBlocked, IpUnblocked, BehaviorThresholdExceeded)
-- **Notifications**: Email and Slack alerts with severity filtering and rate limiting
-- **Honeypot Routes**: Trap routes to catch automated scanners
-- **Per-Route Rate Limiting**: Configurable rate limits via middleware (`crowdsec.rate:60,1`)
-- **Custom Patterns**: Register custom detection scenarios at runtime
-- **GeoIP Lookup**: IP geolocation via ip-api.com with caching
-- **Security Event Context**: Request correlation, route/response metadata, ASN/ISP, hashed user identity, and parsed client device
-- **REST API**: 6 API endpoints for programmatic management (block, unblock, check, stats, events, blocked)
-- **Admin Dashboard**: Standalone dark theme Blade dashboard (enable via config)
-- **SIEM Export**: Export events in JSON, CSV, or Syslog (RFC 5424) format
-- **CLI Commands**: Statistics, cleanup, and export utilities
-- **Facade API**: Easy programmatic access to all features
-- **Auto-migrations**: Database tables created automatically
-- **CI Pipeline**: GitHub Actions with PHP 8.1/8.2/8.3 × Laravel 10.x/11.x/12.x plus a PHPStan quality gate
+- Detection for 15 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, and XXE
+- Multi-layer URL and HTML entity decoding to detect encoded payloads
+- Temporary IP blocking with expiration and progressive escalation
+- Request-rate, 404, login-attempt, and threat-score behavior tracking
+- Exact-IP and CIDR allowlisting
+- Cached blocked-IP lookups for high-traffic applications
+- Security events with request correlation, route and response context, GeoIP/ASN data, pseudonymous user hashes, and parsed client information
+- Automatic redaction of sensitive query, cookie, authorization, and matched-source values
+- Email and Slack notifications with severity filtering and rate limiting
+- Honeypot and per-route rate-limiting middleware
+- REST management API, admin dashboard, and Prometheus-compatible metrics endpoint
+- Immutable audit records for manual block and unblock actions
+- JSON, CSV, and RFC 5424 Syslog exports
+- Health checks through `crowdsec:doctor`
 
 ## Requirements
 
-- PHP ^8.1
-- Laravel ^10.0 or ^11.0 or ^12.0
-- MySQL/PostgreSQL/SQLite (any Laravel-supported database)
+- PHP `^8.1`
+- Laravel `^10.0`, `^11.0`, or `^12.0`
+- A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
-## Installation
+The latest stable package release is `v1.1.0`.
 
-Install the package via Composer:
+## Quick Start
+
+### 1. Install the package
 
 ```bash
 composer require rilo-arbabillah/laravel-crowdsec
 ```
 
-The package will automatically register its service provider and facade.
+Laravel auto-discovers the service provider, facade, and middleware aliases.
 
-## Configuration
+### 2. Run the migrations
 
-Publish the configuration file to customize detection scenarios and thresholds:
+```bash
+php artisan migrate
+```
+
+The package migrations create the security tables automatically. No migration publishing step is required.
+
+### 3. Publish the configuration
+
+Publishing is optional, but recommended before changing thresholds or enabling integrations:
 
 ```bash
 php artisan vendor:publish --tag=crowdsec-config
 ```
 
-This will create `config/crowdsec-scenarios.php` where you can:
+This creates `config/crowdsec-scenarios.php` in the host application.
 
-- Enable or disable the package
-- Configure detection patterns for each attack type
-- Adjust behavior thresholds (request limits, 404 limits, login attempts)
-- Set block durations per severity
-- Whitelist IPs that should never be blocked
-
-### Notification Channels
-
-CrowdSec can send on-demand security alerts through email and Slack. Mail delivery uses
-the `notifications.recipients` list, while Slack delivery requires an incoming webhook URL.
-
-```php
-'notifications' => [
-    'enabled' => env('CROWDSEC_NOTIFY_ENABLED', false),
-    'channels' => ['mail', 'slack'],
-    'severity_threshold' => 'high',
-    'rate_limit_minutes' => 5,
-    'recipients' => ['security@example.com'],
-    'slack_webhook_url' => env('CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL', ''),
-],
-```
-
-```bash
-CROWDSEC_NOTIFY_ENABLED=true
-CROWDSEC_NOTIFY_CHANNELS=mail,slack
-CROWDSEC_NOTIFY_RECIPIENTS=security@example.com,ops@example.com
-CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/XXXX
-```
-
-If you enable the `slack` channel without a webhook URL, `php artisan crowdsec:doctor`
-will report the configuration as invalid.
-
-### Enabling/Disabling the Package
-
-You can toggle the package on or off via configuration:
-
-```php
-// config/crowdsec-scenarios.php
-
-return [
-    // Enable or disable the entire package
-    'enabled' => true,  // Set to false to disable all protection
-
-    // ... rest of configuration
-];
-```
-
-When disabled, the middleware will pass all requests through without any filtering or blocking. This is useful for:
-
-- Development environments where you need to test without WAF interference
-- Debugging specific issues without protection blocking legitimate traffic
-- Temporary maintenance windows
-
-### Default Configuration
-
-```php
-// config/crowdsec-scenarios.php
-
-return [
-    // Enable/disable the package
-    'enabled' => true,
-
-    // Whitelist IPs (won't be blocked)
-    'whitelist_ips' => [
-        '127.0.0.1',
-        '::1',
-    ],
-
-    // Behavior thresholds
-    'behavior' => [
-        'request_threshold' => 500,      // requests per minute
-        '404_threshold' => 15,           // 404s per minute
-        'login_threshold' => 5,          // login attempts per minute
-        'threat_score_threshold' => 50,
-        'block_duration' => 240,         // 4 hours
-        'severity' => 'high',
-    ],
-
-    // Block duration defaults (in minutes)
-    'defaults' => [
-        'low' => 60,
-        'medium' => 240,
-        'high' => 720,
-        'critical' => 1440,
-    ],
-
-    // ... detection patterns
-];
-```
-
-### Security Event Context
-
-Only detected security events are enriched; normal requests are not stored as access logs.
-The package records a correlation ID, named route, content metadata, response status,
-duration, enforcement action, GeoIP/ASN data, a pseudonymous user hash, and parsed
-browser/OS/device information.
-
-```php
-'event_context' => [
-    'request_id_header' => env('CROWDSEC_REQUEST_ID_HEADER', 'X-Request-ID'),
-    'parse_user_agent' => env('CROWDSEC_PARSE_USER_AGENT', true),
-    'hash_authenticated_user' => env('CROWDSEC_HASH_AUTHENTICATED_USER', true),
-    'user_hash_key' => env('CROWDSEC_USER_HASH_KEY'), // falls back to APP_KEY
-    'redact_query_parameters' => [
-        'password', 'token', 'access_token', 'refresh_token',
-        'api_key', 'secret', 'authorization', 'signature',
-    ],
-],
-
-'geoip' => [
-    'enabled' => env('CROWDSEC_GEOIP_ENABLED', false),
-    'provider' => env('CROWDSEC_GEOIP_PROVIDER', 'ip-api'),
-    'cache_ttl' => 86400,
-    'timeout' => env('CROWDSEC_GEOIP_TIMEOUT', 2),
-    'custom_callback' => null,
-],
-```
-
-`action_taken` is either `blocked` or `allowed_scored`. Query parameters configured
-for redaction, cookie matches, and authorization-related matches are never persisted
-with their raw values. User IDs are stored only as HMAC-SHA256 hashes. User-Agent,
-GeoIP, and client-provided request IDs are correlation signals and must not be treated
-as trusted device identity. Configure Laravel trusted proxies before relying on the
-recorded client IP.
-
-## Basic Usage
-
-### Applying Middleware to Routes
-
-Apply the middleware to individual routes:
+### 4. Protect a route
 
 ```php
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['crowdsec'])->group(function () {
-    Route::get('/admin', function () {
-        // Protected route
-    });
-
+Route::middleware('crowdsec')->group(function () {
+    Route::get('/admin', AdminController::class);
     Route::post('/login', [AuthController::class, 'login']);
 });
 ```
 
-### Applying Middleware Globally
+### 5. Verify the installation
 
-Add the middleware to your HTTP kernel for global protection:
-
-```php
-// app/Http/Kernel.php
-
-protected $middlewareAliases = [
-    // ...
-    'crowdsec' => \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection::class,
-];
+```bash
+php artisan crowdsec:doctor
 ```
 
-Then apply to routes or route groups:
+The doctor checks the package state, database tables, detection patterns, cache, notifications, GeoIP, optional endpoints, allowlists, and route configuration.
+
+## Protecting Routes
+
+The package registers three middleware aliases:
+
+| Alias | Purpose | Example |
+| --- | --- | --- |
+| `crowdsec` | Full WAF and behavior protection | `Route::middleware('crowdsec')` |
+| `crowdsec.honeypot` | Immediately block clients that access a trap route | `Route::middleware('crowdsec.honeypot')` |
+| `crowdsec.rate` | Apply an IP-based route limit | `Route::middleware('crowdsec.rate:60,1')` |
+
+### Route groups
 
 ```php
-// Protect all web routes
-Route::middleware(['crowdsec'])->group(base_path('routes/web.php'));
-
-// Protect API routes
-Route::middleware(['api', 'crowdsec'])->group(base_path('routes/api.php'));
-```
-
-### Skipping Middleware for Certain Routes
-
-```php
-// Disable for health check endpoints
-Route::middleware(['crowdsec'])->group(function () {
-    Route::get('/admin', function () {
-        // Protected
-    });
+Route::middleware(['api', 'crowdsec'])->group(function () {
+    Route::get('/account', AccountController::class);
+    Route::post('/orders', [OrderController::class, 'store']);
 });
+```
 
-Route::get('/health', function () {
-    // Not protected
-})->withoutMiddleware(['crowdsec']);
+Use `withoutMiddleware()` for endpoints that must remain outside the protected group:
+
+```php
+Route::get('/health', HealthController::class)
+    ->withoutMiddleware('crowdsec');
+```
+
+### Global middleware
+
+Route-level protection is usually easier to tune. To protect every request in Laravel 11 or 12, append the middleware in `bootstrap/app.php`:
+
+```php
+use Illuminate\Foundation\Configuration\Middleware;
+use RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->append(CrowdSecProtection::class);
+})
+```
+
+For Laravel 10, add the class to the global `$middleware` array in `app/Http/Kernel.php`:
+
+```php
+protected $middleware = [
+    // ...
+    \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection::class,
+];
 ```
 
 ## Programmatic Usage
 
-Use the `CrowdSec` facade for programmatic control:
+The `CrowdSec` facade provides access to the protection service.
 
-### Check if IP is Blocked
+### Check, block, and unblock an IP
 
 ```php
 use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
@@ -251,361 +158,355 @@ use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 $ip = request()->ip();
 
 if (CrowdSec::isBlocked($ip)) {
-    abort(403, 'Your IP has been blocked');
+    abort(403, 'Your IP has been blocked.');
 }
-```
 
-### Manually Block an IP
-
-```php
-use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
-
-// Block for 60 minutes
-CrowdSec::blockIp($request->ip(), 'Manual ban - spam', 60);
-
-// Block for 24 hours (default for critical threats)
-CrowdSec::blockIp($request->ip(), 'Suspicious activity', 1440);
-```
-
-### Unblock an IP
-
-```php
-use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
-
+CrowdSec::blockIp($ip, 'Manual block for abusive traffic', 60);
 CrowdSec::unblockIp($ip);
 ```
 
-### Track Login Attempts
+Block duration is expressed in minutes. Repeated blocks are progressively extended, up to seven days.
 
-Call this after failed login attempts for brute-force protection:
+### Track a failed login
 
 ```php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 public function login(Request $request)
 {
-    if (! Auth::attempt($credentials)) {
-        // Track failed attempt
+    if (! Auth::attempt($request->only('email', 'password'))) {
         CrowdSec::trackLoginAttempt($request->ip());
 
-        return back()->withErrors(['email' => 'Invalid credentials']);
+        return back()->withErrors(['email' => 'Invalid credentials.']);
     }
-
-    // Reset login attempts on successful login
-    // (optional - you could implement this)
 
     return redirect('/dashboard');
 }
 ```
 
-### Analyze Request for Threats
+Successful Laravel authentication automatically clears the IP's login-attempt count and threat score, and removes an active block for that IP.
+
+### Analyze a request
 
 ```php
 use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
 
 $threats = CrowdSec::analyzeRequest($request);
 
-if (! empty($threats)) {
-    foreach ($threats as $threat) {
-        \Log::warning('Security threat detected', [
-            'type' => $threat['type'],
-            'severity' => $threat['severity'],
-            'matched' => $threat['matched'],
-        ]);
-    }
+foreach ($threats as $threat) {
+    logger()->warning('Security threat detected', [
+        'type' => $threat['type'],
+        'severity' => $threat['severity'],
+        'matched' => $threat['matched'],
+    ]);
 }
 ```
 
-## CLI Commands
+### Register a custom scenario
 
-### View Protection Statistics
+Register runtime scenarios from an application service provider:
 
-```bash
-php artisan crowdsec:stats
+```php
+use RiloArbabillah\LaravelCrowdSec\Facades\CrowdSec;
+
+CrowdSec::registerScenario('api_abuse', [
+    'patterns' => ['/custom-api-abuse-signature/i'],
+    'severity' => 'high',
+    'weight' => 30,
+    'block_duration' => 720,
+]);
 ```
 
-Output includes:
+Custom scenarios are merged with the built-in scenarios.
 
-- Active blocked IPs
-- Expired blocked IPs
-- Events today
-- Events this week
-- Top attackers (IP addresses)
+## Configuration
 
-For JSON output (useful for monitoring):
+After publishing the configuration, edit `config/crowdsec-scenarios.php`. The most commonly adjusted settings are:
+
+```php
+return [
+    'enabled' => env('CROWDSEC_ENABLED', true),
+
+    'whitelist_ips' => [
+        '127.0.0.1',
+        '::1',
+        // '10.0.0.0/8',
+    ],
+
+    'behavior' => [
+        'request_threshold' => 500,
+        '404_threshold' => 15,
+        'login_threshold' => 5,
+        'threat_score_threshold' => 50,
+        'block_duration' => 240,
+        'severity' => 'high',
+    ],
+];
+```
+
+### Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CROWDSEC_ENABLED` | `true` | Enable or disable all package protection |
+| `CROWDSEC_LOG_CHANNEL` | Laravel default | Select the Laravel log channel |
+| `CROWDSEC_MAX_CONTENT_LENGTH` | `10485760` | Maximum inspected request size in bytes; `0` disables the limit |
+| `CROWDSEC_BLOCK_EMPTY_UA` | `false` | Block requests without a User-Agent header |
+| `CROWDSEC_CACHE_ENABLED` | `false` | Cache blocked-IP lookups |
+| `CROWDSEC_CACHE_STORE` | Laravel default | Select the cache store |
+| `CROWDSEC_CACHE_TTL` | `60` | Blocked-IP cache lifetime in seconds |
+| `CROWDSEC_NOTIFY_ENABLED` | `false` | Enable security notifications |
+| `CROWDSEC_NOTIFY_CHANNELS` | `mail` | Comma-separated `mail` and/or `slack` channels |
+| `CROWDSEC_NOTIFY_RECIPIENTS` | Empty | Comma-separated mail recipients |
+| `CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL` | Empty | Slack incoming webhook URL |
+| `CROWDSEC_GEOIP_ENABLED` | `false` | Enable GeoIP enrichment |
+| `CROWDSEC_GEOIP_PROVIDER` | `ip-api` | Use `ip-api` or a configured custom provider |
+| `CROWDSEC_GEOIP_TIMEOUT` | `2` | GeoIP request timeout in seconds |
+| `CROWDSEC_REQUEST_ID_HEADER` | `X-Request-ID` | Header used for request correlation |
+| `CROWDSEC_PARSE_USER_AGENT` | `true` | Parse browser, OS, and device type |
+| `CROWDSEC_HASH_AUTHENTICATED_USER` | `true` | Store a pseudonymous authenticated-user hash |
+| `CROWDSEC_USER_HASH_KEY` | `APP_KEY` | Dedicated HMAC key for stable user hashes |
+| `CROWDSEC_API_ENABLED` | `false` | Enable the REST management API |
+| `CROWDSEC_METRICS_ENABLED` | `false` | Enable the metrics endpoint |
+| `CROWDSEC_AUDIT_ENABLED` | `false` | Record manual block and unblock audit events |
+| `CROWDSEC_AUDIT_RETENTION_DAYS` | `365` | Audit record retention period |
+| `CROWDSEC_DASHBOARD_ENABLED` | `false` | Enable the admin dashboard |
+
+Configuration values that do not have an environment variable, including middleware stacks, endpoint paths, severity thresholds, allowlists, redaction fields, and detection patterns, are configured directly in `crowdsec-scenarios.php`.
+
+### Notifications
+
+```env
+CROWDSEC_NOTIFY_ENABLED=true
+CROWDSEC_NOTIFY_CHANNELS=mail,slack
+CROWDSEC_NOTIFY_RECIPIENTS=security@example.com,ops@example.com
+CROWDSEC_NOTIFY_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/path
+```
+
+Notifications default to high-severity and critical blocks, with one notification per IP every five minutes. Laravel mail must be configured for the `mail` channel. The `slack` channel requires a valid incoming webhook URL.
+
+### Security event context and privacy
+
+Only detected security events are stored; the package is not a general access logger. Events can include request and route metadata, response status, enforcement action, duration, country, ASN/ISP, pseudonymous user identity, browser, OS, and device type.
+
+Sensitive query parameters, cookies, authorization values, referers, and matched sources are redacted before persistence. Authenticated user IDs are stored as HMAC-SHA256 hashes rather than raw identifiers. Set `CROWDSEC_USER_HASH_KEY` if hashes must remain stable when `APP_KEY` is rotated.
+
+Client IPs, User-Agent strings, GeoIP results, and client-provided request IDs are correlation signals, not trusted identity. Configure Laravel's trusted proxies correctly before relying on the recorded client IP.
+
+## Optional Features
+
+The REST API, metrics endpoint, audit log, dashboard, notifications, GeoIP lookup, and blocked-IP cache are disabled by default.
+
+### REST API
+
+Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', 'auth:sanctum']`.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/crowdsec/stats` | Protection statistics |
+| `GET` | `/api/crowdsec/events` | Filterable security events |
+| `GET` | `/api/crowdsec/blocked` | Blocked IP addresses |
+| `POST` | `/api/crowdsec/block` | Manually block an IP |
+| `DELETE` | `/api/crowdsec/block/{ip}` | Unblock an IP |
+| `GET` | `/api/crowdsec/check/{ip}` | Check an IP's block status |
+
+If the application does not use Sanctum, replace the middleware with an equivalent authenticated API guard. Do not expose management routes without authentication.
+
+### Prometheus metrics
+
+Enable metrics with `CROWDSEC_METRICS_ENABLED=true`. The default path is `/crowdsec/metrics`, protected by `['web', 'auth']`.
+
+For monitoring systems that cannot authenticate through a Laravel session, configure a signed URL or a dedicated allowlist middleware. The doctor command rejects an enabled metrics endpoint that has neither `auth` nor `signed` protection.
+
+### Admin dashboard
+
+Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']`.
+
+The bundled Blade dashboard shows recent events, active blocks, top attackers, severity breakdowns, source countries, and device types. Publish its views only when customization is needed:
 
 ```bash
+php artisan vendor:publish --tag=crowdsec-views
+```
+
+### GeoIP enrichment
+
+Enable the default `ip-api.com` provider with:
+
+```env
+CROWDSEC_GEOIP_ENABLED=true
+CROWDSEC_GEOIP_PROVIDER=ip-api
+CROWDSEC_GEOIP_TIMEOUT=2
+```
+
+Results are cached for 24 hours. Private addresses are not sent to the provider. Review the provider's availability, privacy, and usage terms before enabling it in production.
+
+### Audit logging
+
+Enable immutable audit records for manual IP block and unblock actions:
+
+```env
+CROWDSEC_AUDIT_ENABLED=true
+CROWDSEC_AUDIT_RETENTION_DAYS=365
+```
+
+Audit retention is enforced by `crowdsec:cleanup` when audit logging is enabled.
+
+## Artisan Commands
+
+| Command | Purpose |
+| --- | --- |
+| `php artisan crowdsec:doctor` | Validate configuration, migrations, patterns, and integrations |
+| `php artisan crowdsec:stats` | Show blocks, event totals, threat counts, and top attackers |
+| `php artisan crowdsec:cleanup` | Expire bans and remove old event, behavior, and audit records |
+| `php artisan crowdsec:export` | Export events as JSON, CSV, or RFC 5424 Syslog |
+
+### Health checks and statistics
+
+```bash
+php artisan crowdsec:doctor
+php artisan crowdsec:doctor --json
+
+php artisan crowdsec:stats
 php artisan crowdsec:stats --json
 ```
 
-### Clean Up Expired Bans
+JSON output is suitable for automated checks and monitoring integrations.
 
-Remove expired IP blocks and old security events:
+### Cleanup
+
+Running cleanup without a selector processes all supported record types:
 
 ```bash
 php artisan crowdsec:cleanup
 ```
 
-If audit logging is enabled, the cleanup command also prunes audit records older than
-`audit.retention_days`.
-
-#### Cleanup Options
+Use selectors or preview the result:
 
 ```bash
-# Preview what would be deleted (no changes)
 php artisan crowdsec:cleanup --dry-run
-
-# Clean only expired bans
 php artisan crowdsec:cleanup --expired
-
-# Clean only old events (older than 30 days)
 php artisan crowdsec:cleanup --old-events
-
-# Clean only old behaviors (older than 7 days)
 php artisan crowdsec:cleanup --old-behaviors
 ```
 
-Audit log retention is configured in `config/crowdsec-scenarios.php`:
+Security events and inactive behavior records are removed after 30 days. Audit records use `CROWDSEC_AUDIT_RETENTION_DAYS`. The `--dry-run` option does not modify data.
 
-```php
-'audit' => [
-    'enabled' => env('CROWDSEC_AUDIT_ENABLED', false),
-    'retention_days' => env('CROWDSEC_AUDIT_RETENTION_DAYS', 365),
-],
+### SIEM export
+
+```bash
+php artisan crowdsec:export --format=json
+php artisan crowdsec:export --format=csv --from=2026-07-01 --to=2026-07-31
+php artisan crowdsec:export --format=syslog --severity=critical
+php artisan crowdsec:export --format=json --output=storage/app/crowdsec-events.json
 ```
 
-#### Automated Cleanup in Production
+Supported options are `--format`, `--from`, `--to`, `--severity`, and `--output`. Without `--output`, the export is written to standard output.
 
-Add to your `routes/console.php` or set up a scheduled command:
+## Scheduled Maintenance
+
+The package registers these tasks automatically through Laravel's scheduler:
+
+- Expired bans: daily
+- Security events older than 30 days: weekly
+- Inactive behavior records older than 30 days: weekly
+
+The application must still run Laravel's scheduler in production, for example through a cron entry that invokes `php artisan schedule:run` every minute.
+
+For Laravel 10 applications where package schedule discovery is unavailable, add the equivalent commands to `app/Console/Kernel.php`:
 
 ```php
-// In routes/console.php
-Artisan::command('crowdsec:daily-cleanup', function () {
-    $this->call('crowdsec:cleanup', ['--expired' => true]);
-})->purpose('Clean up expired bans daily');
-```
+use Illuminate\Console\Scheduling\Schedule;
 
-Or use Laravel's scheduler:
-
-```php
-// In app/Console/Kernel.php
-protected function schedule(Schedule $schedule)
+protected function schedule(Schedule $schedule): void
 {
     $schedule->command('crowdsec:cleanup --expired')->daily();
+    $schedule->command('crowdsec:cleanup --old-events')->weekly();
+    $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
 }
 ```
 
-## Database
+Do not register these fallback schedules when the package tasks already appear in `php artisan schedule:list`.
 
-The package creates three tables automatically via migrations:
+## Detection Coverage
 
-| Table             | Description                                                               |
-| ----------------- | ------------------------------------------------------------------------- |
-| `blocked_ips`     | Tracks blocked IPs with expiration and reason                             |
-| `ip_behaviors`    | Tracks per-IP metrics (request count, 404s, login attempts, threat score) |
-| `security_events` | Logs detected threats with request, response, network, user-hash, and client context |
+| Threat category | Default severity | Examples |
+| --- | --- | --- |
+| SQL injection | Critical | Boolean, union, stacked, time-based, and file-based SQL payloads |
+| Cross-site scripting (XSS) | High | Script tags, event handlers, dangerous URI schemes, and DOM access |
+| Path traversal | Critical | Plain, encoded, Windows-style, and null-byte traversal |
+| Command injection | Critical | Shell separators, substitutions, shell paths, and reverse shells |
+| File inclusion | High | PHP, data, expect, ZIP, PHAR, and related wrappers |
+| PHP serialization | Critical | Serialized objects and magic-method payloads |
+| Directory brute force | Medium | Sensitive files, CMS paths, debug endpoints, and backups |
+| Header injection | High | CRLF and injected location headers |
+| Suspicious User-Agent | Medium | Common vulnerability scanners and exploitation tools |
+| SSRF | Critical | Cloud metadata, private hosts, and dangerous protocols |
+| XXE | Critical | External entities, system identifiers, and XInclude |
+| NoSQL injection | Critical | MongoDB operators, aggregation stages, and JavaScript payloads |
+| LDAP injection | High | LDAP filter and distinguished-name manipulation |
+| Server-side template injection | Critical | Common expression and template-control syntax |
+| Open redirect | Medium | External URLs supplied through redirect parameters |
 
-Tables are created when you run:
+Detection runs after URL decoding, double URL decoding, and HTML entity decoding. Default patterns and severities can be reviewed and adjusted in the published configuration.
 
-```bash
-php artisan migrate
-```
+Because application traffic varies, test configuration changes against representative legitimate requests before deploying stricter patterns or thresholds.
 
-## Detected Threats
+## Database Tables
 
-The package detects the following attack types:
+| Table | Purpose |
+| --- | --- |
+| `blocked_ips` | Active and historical IP blocks, reasons, and expiration |
+| `ip_behaviors` | Per-IP request, 404, login, threat-score, and block counters |
+| `security_events` | Detected threats and enriched request/response context |
+| `crowdsec_audit_logs` | Optional immutable records of manual block and unblock actions |
 
-| Threat Type           | Severity | Examples                                |
-| --------------------- | -------- | --------------------------------------- |
-| SQL Injection         | Critical | `UNION SELECT`, `OR 1=1`, `xp_cmdshell` |
-| XSS                   | High     | `<script>`, `javascript:`, `onclick=`   |
-| Path Traversal        | Critical | `../`, `%2e%2e%2f`                      |
-| Command Injection     | Critical | `;cat`, `\|whoami`, `` `id` ``          |
-| File Inclusion        | High     | `php://input`, `data:text/html`         |
-| PHP Serialization     | Critical | `O:16:"MaliciousClass"`                 |
-| Directory Bruteforce  | Medium   | `.git/config`, `.env`, `wp-admin`       |
-| Header Injection      | High     | CRLF injection, `Location:`             |
-| Suspicious User Agent | Medium   | `sqlmap`, `nmap`, `python-requests`     |
-| Behavior Threshold    | High     | Rate limiting, brute-force              |
+All tables are managed by the package migrations loaded by the service provider.
 
-## Production Guidelines
+## Production Checklist
 
-### 1. Monitor Regularly
+1. Run `php artisan crowdsec:doctor` after deployment and configuration changes.
+2. Protect sensitive routes first, then expand coverage after reviewing legitimate traffic.
+3. Configure trusted proxies so Laravel resolves the actual client IP.
+4. Add internal services and trusted networks to `whitelist_ips`, using CIDR entries where appropriate.
+5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them.
+6. Configure Laravel mail or Slack before enabling notifications.
+7. Confirm `php artisan schedule:list` includes cleanup tasks and that the scheduler runs in production.
+8. Monitor `crowdsec:stats`, application logs, security events, and optional metrics.
+9. Enable a shared cache store for high-traffic or multi-instance deployments.
+10. Treat detection as defense in depth and continue using validation, authorization, secure coding, and infrastructure controls.
 
-Run stats command periodically or set up monitoring:
-
-```bash
-# Check for active threats
-php artisan crowdsec:stats
-
-# Export to monitoring system
-php artisan crowdsec:stats --json | jq '.events_today'
-```
-
-### 2. Tune Thresholds for Production
-
-Adjust `config/crowdsec-scenarios.php` based on your traffic:
-
-```php
-'behavior' => [
-    'request_threshold' => 1000,    // Increase for high-traffic sites
-    '404_threshold' => 20,          // Adjust based on your 404 rate
-    'login_threshold' => 3,         // Stricter for login pages
-    'threat_score_threshold' => 50,
-    'block_duration' => 240,
-],
-```
-
-### 3. Protect Optional Endpoints Before Enabling Them
-
-The REST API, metrics endpoint, and dashboard are disabled by default. When you enable
-them, CrowdSec now defaults to authenticated middleware so they are not exposed publicly
-by accident.
-
-```php
-'api' => [
-    'enabled' => env('CROWDSEC_API_ENABLED', false),
-    'middleware' => ['api', 'auth:sanctum'],
-],
-
-'metrics' => [
-    'enabled' => env('CROWDSEC_METRICS_ENABLED', false),
-    'path' => 'crowdsec/metrics',
-    'middleware' => ['web', 'auth'],
-],
-
-'dashboard' => [
-    'enabled' => env('CROWDSEC_DASHBOARD_ENABLED', false),
-    'path' => 'crowdsec',
-    'middleware' => ['web', 'auth'],
-],
-```
-
-Recommended production overrides:
-
-```php
-'api' => [
-    'enabled' => true,
-    'middleware' => ['api', 'auth:sanctum'],
-],
-
-'metrics' => [
-    'enabled' => true,
-    'middleware' => ['signed'],
-],
-
-'dashboard' => [
-    'enabled' => true,
-    'middleware' => ['web', 'auth', 'verified'],
-],
-```
-
-Run `php artisan crowdsec:doctor` after enabling any of these surfaces. The doctor
-command now fails if the API or dashboard lacks authentication, or if metrics are
-exposed without `auth` or `signed` middleware.
-
-### 4. Whitelist Internal Services
-
-```php
-'whitelist_ips' => [
-    '127.0.0.1',
-    '::1',
-    '10.0.0.0/8',      // Internal network
-    '192.168.0.0/16',  // Internal network
-    'your-load-balancer-ip',
-],
-```
-
-### 5. Set Up Log Monitoring
-
-Monitor Laravel logs for CrowdSec warnings:
-
-```php
-// Log channel configuration
-'log' => [
-    'driver' => 'daily',
-    'path' => storage_path('logs/laravel.log'),
-    'level' => 'warning',
-],
-```
-
-### 6. Schedule Regular Cleanup
-
-```php
-// In app/Console/Kernel.php
-protected function schedule(Schedule $schedule)
-{
-    // Clean expired bans daily at 3 AM
-    $schedule->command('crowdsec:cleanup --expired --old-events --old-behaviors')
-             ->daily()
-             ->at('03:00');
-}
-```
-
-### 7. Performance Considerations
-
-- The middleware runs on every request - keep patterns optimized
-- IP whitelist is checked first for performance
-- Behavior tracking uses efficient increment operations
-- Consider caching blocked IPs for very high-traffic sites
-
-### Performance Benchmarks
-
-The package includes a benchmark suite (`tests/Benchmark`) to verify overhead stays minimal.
-
-Run benchmarks:
+Performance depends on traffic, request size, database, cache, enabled enrichment, and deployment hardware. Run the included benchmark suite in an environment representative of production:
 
 ```bash
 vendor/bin/phpunit tests/Benchmark --testdox
 ```
 
-Typical results (100 iterations average):
+## Development
 
-| Operation               | Avg Time | Target     |
-| ----------------------- | -------- | ---------- |
-| Whitelist bypass        | ~0.006ms | < 0.5ms ✅ |
-| Clean request analysis  | ~0.038ms | < 2ms ✅   |
-| Blocked IP check        | ~0.045ms | < 2ms ✅   |
-| Threat detection (SQLi) | ~0.047ms | < 5ms ✅   |
-| Multi-threat detection  | ~0.051ms | < 5ms ✅   |
-| POST body analysis      | ~0.159ms | < 3ms ✅   |
-| Behavior tracking       | ~0.163ms | < 3ms ✅   |
+Clone the repository and install development dependencies:
 
-> **Note:** Results may vary depending on hardware. Benchmarks use SQLite in-memory.
+```bash
+composer install
+```
 
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-new-feature`
-3. Make your changes
-4. Run checks: `composer test && composer analyse`
-5. Commit your changes: `git commit -am 'Add some feature'`
-6. Push to the branch: `git push origin feature/my-new-feature`
-7. Submit a Pull Request
-
-### Running Tests
+Run the automated checks before submitting a pull request:
 
 ```bash
 composer test
-```
-
-### Running Static Analysis
-
-```bash
 composer analyse
+composer validate --strict
 ```
 
-GitHub Actions now runs both PHPUnit and PHPStan as part of the default CI pipeline.
-The static analysis gate currently focuses on route files, notification delivery,
-and the `crowdsec:doctor` command to keep the check lightweight across the supported
-Laravel version matrix.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions tests the supported PHP and Laravel matrix and runs the PHPStan quality gate.
+
+Contributions should be submitted through a focused branch and pull request with tests for behavioral changes.
 
 ## Security
 
-If you discover any security-related issues, please email the maintainer instead of opening an issue.
+Do not open a public issue for an undisclosed vulnerability. Contact the maintainer privately with reproduction steps, affected versions, impact, and any suggested mitigation.
 
 ## License
 
-This package is open-sourced software licensed under the [MIT license](LICENSE).
+Laravel CrowdSec is open-source software licensed under the [MIT License](LICENSE).
