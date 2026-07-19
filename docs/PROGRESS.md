@@ -268,6 +268,7 @@
 ## 📝 Git History
 
 ```
+451daeb  feat: harden production quality gates
 6cd511d  ci: upgrade checkout action to v7
 563296c  docs: prepare v1.2.0 release
 abb00b9  feat: add configurable WAF policy controls
@@ -297,5 +298,4 @@ cf4ec0b  chore: add LICENSE, .gitattributes, update composer.json for Packagist
 91ed2b0  feat: add Laravel 12 compatibility support (#35) (#45)
 22bfaa3  chore: prepare v1.0.0 stable release (#38) (#44)
 b5ab47c  security: audit regex patterns for ReDoS vulnerability (#37) (#43)
-ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
 ```
