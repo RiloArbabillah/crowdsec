@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
 > Last updated: 19 Jul 2026
-> **Test suite:** 237 passed (480 assertions)
-> **Next focus:** monitor `v1.2.0` adoption and Packagist synchronization
+> **Test suite:** 267 passed (525 assertions), plus 8 dedicated performance benchmarks
+> **Next focus:** validate `v1.3.0` quality gates on GitHub Actions and monitor the accuracy corpus
 
 ---
 
@@ -198,8 +198,10 @@
 - [x] Matrix eksplisit Laravel 10/Testbench 8, Laravel 11/Testbench 9, Laravel 12/Testbench 10
 - [x] PHP 8.4 matrix untuk Laravel 10/11/12
 - [x] Composer dependency caching
-- [x] SQLite for testing
-- [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 5 seluruh source
+- [x] SQLite for the Laravel/PHP compatibility matrix
+- [x] Dedicated MySQL 8.4 and PostgreSQL 16 database compatibility jobs
+- [x] Minimum 85% source line coverage gate dengan PCOV dan Clover
+- [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 6 seluruh source
 - [x] Guarded manual release workflow (metadata, CI, tag, dan GitHub Release)
 
 ### Testing
@@ -207,12 +209,13 @@
 - [x] 31 unit test cases (PHPUnit + release metadata validator)
 - [x] 22 integration test cases (`CrowdSecMiddlewareTest` — full 10-step pipeline)
 - [x] 20 edge case tests (`EdgeCaseTest` — CIDR, escalation, body analysis, etc.)
-- [x] 8 performance benchmarks (all < 1ms target)
+- [x] 8 dedicated performance benchmarks via `composer benchmark` (all < 1ms target)
+- [x] Versioned WAF accuracy corpus: 15 malicious + 20 benign samples
 - [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
 - [x] Security event context coverage (enforcement, privacy, API, export, GeoIP, UA, HMAC)
 - [x] 10 reliability hardening tests (fixed windows, nested login inspection, auth defaults, rate limiting)
 - [x] WAF policy, GeoIP HTTPS, release validator, login semantics, dan atomic notification coverage
-- [x] Total: **237 tests, 480 assertions**
+- [x] Total functional suite: **267 tests, 525 assertions**
 
 ### Documentation
 
@@ -231,6 +234,7 @@
 - [x] **Tag `v1.1.1`** — publish reliability hardening after CI succeeds
 - [x] **Validate `v1.2.0` on GitHub Actions** — PHP 8.4 and all Laravel compatibility jobs passed
 - [x] **Prepare `v1.2.0` release metadata** — stable README, CHANGELOG, PRD, and progress metadata synchronized
+- [x] **Prepare `v1.3.0` production hardening** — coverage, accuracy corpus, database matrix, PHPStan level 6, and benchmark isolation
 
 ### Future Enhancements (v1.1+)
 
@@ -252,18 +256,20 @@
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Total tests**        | **237**    |
-| Test assertions        | 480        |
+| **Functional tests**   | **267**    |
+| Test assertions        | 525        |
 | Laravel compatibility  | 10.x, 11.x, 12.x |
 | PHP minimum            | 8.1        |
-| Package status         | v1.2.0 stable release |
-| CI quality gates       | PHPUnit + Larastan/PHPStan level 5 + Composer audit |
+| Package status         | v1.3.0 stable release |
+| CI quality gates       | PHPUnit + 85% coverage + MySQL/PostgreSQL + PHPStan level 6 + Composer audit |
 
 ---
 
 ## 📝 Git History
 
 ```
+6cd511d  ci: upgrade checkout action to v7
+563296c  docs: prepare v1.2.0 release
 abb00b9  feat: add configurable WAF policy controls
 b4f2401  docs: prepare v1.1.1 release
 37bd253  fix: harden behavior tracking reliability
@@ -292,6 +298,4 @@ cf4ec0b  chore: add LICENSE, .gitattributes, update composer.json for Packagist
 22bfaa3  chore: prepare v1.0.0 stable release (#38) (#44)
 b5ab47c  security: audit regex patterns for ReDoS vulnerability (#37) (#43)
 ddb6bcc  task: improve test coverage to 122 tests (#36) (#42)
-4222fc7  docs: track docs/ directory and update PRD + PROGRESS
-43758db  docs: update PRD, PROGRESS, and README with all resolved features
 ```

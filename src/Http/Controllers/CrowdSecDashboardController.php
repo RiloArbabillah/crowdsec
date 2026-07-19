@@ -4,6 +4,7 @@ namespace RiloArbabillah\LaravelCrowdSec\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Contracts\View\View;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -13,7 +14,7 @@ class CrowdSecDashboardController extends Controller
     /**
      * Display the security dashboard.
      */
-    public function index()
+    public function index(): View
     {
         $stats = [
             'total_events' => SecurityEvent::count(),

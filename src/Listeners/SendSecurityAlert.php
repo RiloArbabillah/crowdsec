@@ -62,9 +62,14 @@ class SendSecurityAlert
         Notification::routes($routes)->notify($notification);
     }
 
+    /**
+     * @param array<string, mixed> $config
+     * @return array<string, string|list<string>>
+     */
     protected function notificationRoutes(array $config): array
     {
-        $channels = collect($config['channels'] ?? ['mail'])
+        $configuredChannels = $config['channels'] ?? ['mail'];
+        $channels = collect(is_array($configuredChannels) ? $configuredChannels : [])
             ->map(fn ($channel) => strtolower(trim((string) $channel)))
             ->filter()
             ->unique()
@@ -73,7 +78,8 @@ class SendSecurityAlert
         $routes = [];
 
         if ($channels->contains('mail')) {
-            $recipients = collect($config['recipients'] ?? [])
+            $configuredRecipients = $config['recipients'] ?? [];
+            $recipients = collect(is_array($configuredRecipients) ? $configuredRecipients : [])
                 ->map(fn ($recipient) => trim((string) $recipient))
                 ->filter()
                 ->values()

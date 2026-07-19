@@ -217,6 +217,7 @@ class CrowdSecProtection
         return $response;
     }
 
+    /** @param list<array<string, mixed>> $threats */
     protected function logEventSafely(string $ip, array $threats, Request $request): ?SecurityEvent
     {
         try {

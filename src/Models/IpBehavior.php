@@ -3,7 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec\Models;
 
 use Closure;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -22,8 +22,6 @@ use Illuminate\Support\Facades\DB;
  */
 class IpBehavior extends Model
 {
-    use HasFactory;
-
     protected $table = 'ip_behaviors';
 
     protected $fillable = [
@@ -56,12 +54,20 @@ class IpBehavior extends Model
     ];
 
 
-    public function scopeHighThreat($query, float $score = 50)
+    /**
+     * @param Builder<IpBehavior> $query
+     * @return Builder<IpBehavior>
+     */
+    public function scopeHighThreat(Builder $query, float $score = 50): Builder
     {
         return $query->where('threat_score', '>=', $score);
     }
 
-    public function scopeActiveRecently($query, int $minutes = 60)
+    /**
+     * @param Builder<IpBehavior> $query
+     * @return Builder<IpBehavior>
+     */
+    public function scopeActiveRecently(Builder $query, int $minutes = 60): Builder
     {
         return $query->where('last_activity', '>=', now()->subMinutes($minutes));
     }

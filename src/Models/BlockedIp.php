@@ -2,8 +2,9 @@
 
 namespace RiloArbabillah\LaravelCrowdSec\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 /**
@@ -15,8 +16,6 @@ use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
  */
 class BlockedIp extends Model
 {
-    use HasFactory;
-
     protected $table = 'blocked_ips';
 
     protected $fillable = [
@@ -35,24 +34,37 @@ class BlockedIp extends Model
         'updated_at' => 'datetime',
     ];
 
-    public function securityEvents()
+    /** @return HasMany<SecurityEvent, $this> */
+    public function securityEvents(): HasMany
     {
         return $this->hasMany(SecurityEvent::class);
     }
 
-    public function scopeActive($query)
+    /**
+     * @param Builder<BlockedIp> $query
+     * @return Builder<BlockedIp>
+     */
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
-    public function scopeExpired($query)
+    /**
+     * @param Builder<BlockedIp> $query
+     * @return Builder<BlockedIp>
+     */
+    public function scopeExpired(Builder $query): Builder
     {
         return $query->where('is_active', true)
             ->whereNotNull('expires_at')
             ->where('expires_at', '<', now());
     }
 
-    public function scopeNotExpired($query)
+    /**
+     * @param Builder<BlockedIp> $query
+     * @return Builder<BlockedIp>
+     */
+    public function scopeNotExpired(Builder $query): Builder
     {
         return $query->where(function ($q) {
             $q->whereNull('expires_at')
@@ -60,7 +72,11 @@ class BlockedIp extends Model
         });
     }
 
-    public function scopeExpiringSoon($query, int $hours = 24)
+    /**
+     * @param Builder<BlockedIp> $query
+     * @return Builder<BlockedIp>
+     */
+    public function scopeExpiringSoon(Builder $query, int $hours = 24): Builder
     {
         return $query->where('is_active', true)
             ->whereNotNull('expires_at')

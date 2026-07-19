@@ -12,6 +12,7 @@ class SecurityAlertNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    /** @param array<string, mixed> $context */
     public function __construct(
         public string $ip,
         public string $reason,
@@ -22,6 +23,7 @@ class SecurityAlertNotification extends Notification implements ShouldQueue
     /**
      * Get the notification's delivery channels.
      */
+    /** @return list<string> */
     public function via(object $notifiable): array
     {
         return config('crowdsec-scenarios.notifications.channels', ['mail']);
@@ -69,6 +71,7 @@ class SecurityAlertNotification extends Notification implements ShouldQueue
     /**
      * Get the array representation (for database/broadcast).
      */
+    /** @return array<string, mixed> */
     public function toArray(object $notifiable): array
     {
         return [

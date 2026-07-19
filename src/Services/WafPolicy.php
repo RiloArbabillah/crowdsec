@@ -19,6 +19,7 @@ class WafPolicy
         self::MODE_DISABLED,
     ];
 
+    /** @param array<string, mixed> $config */
     public function __construct(protected array $config = []) {}
 
     /**
@@ -52,6 +53,7 @@ class WafPolicy
         ];
     }
 
+    /** @param array<string, mixed> $scenario */
     public function modeFor(string $type, array $scenario = []): string
     {
         $scenarioModes = is_array($this->config['scenario_modes'] ?? null)
@@ -67,6 +69,7 @@ class WafPolicy
         return in_array($mode, self::VALID_MODES, true) ? $mode : self::MODE_ENFORCE;
     }
 
+    /** @param list<string> $patterns */
     public function skipsScenario(string $type, array $patterns): bool
     {
         foreach ($patterns as $pattern) {
@@ -78,6 +81,7 @@ class WafPolicy
         return false;
     }
 
+    /** @param array<string, mixed> $rule */
     protected function matchesRequest(Request $request, array $rule): bool
     {
         $routeNames = $this->stringList($rule['route_names'] ?? []);
@@ -94,6 +98,7 @@ class WafPolicy
             && ($methods === [] || in_array(strtoupper($request->method()), $methods, true));
     }
 
+    /** @param list<string> $patterns */
     protected function matchesAny(string $value, array $patterns): bool
     {
         foreach ($patterns as $pattern) {
@@ -105,6 +110,7 @@ class WafPolicy
         return false;
     }
 
+    /** @return list<string> */
     protected function stringList(mixed $items): array
     {
         if (! is_array($items)) {

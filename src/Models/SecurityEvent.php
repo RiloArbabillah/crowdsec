@@ -2,18 +2,34 @@
 
 namespace RiloArbabillah\LaravelCrowdSec\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property string $ip
  * @property string $event_type
  * @property string $severity
+ * @property array<string, mixed> $request_data
+ * @property list<array<string, mixed>>|null $matched_patterns
+ * @property string|null $request_id
+ * @property string|null $route_name
+ * @property string|null $content_type
+ * @property int|null $content_length
+ * @property int|null $response_status
+ * @property int|null $duration_ms
+ * @property string|null $action_taken
+ * @property string|null $country_code
+ * @property int|null $asn
+ * @property string|null $isp
+ * @property string|null $authenticated_user_id_hash
+ * @property string|null $browser
+ * @property string|null $os
+ * @property string|null $device_type
+ * @property \Illuminate\Support\Carbon $created_at
  */
 class SecurityEvent extends Model
 {
-    use HasFactory;
-
     protected $table = 'security_events';
 
     protected $fillable = [
@@ -78,27 +94,44 @@ class SecurityEvent extends Model
 
     public const EVENT_BEHAVIOR_THRESHOLD = 'behavior_threshold';
 
-    public function blockedIp()
+    /** @return BelongsTo<BlockedIp, $this> */
+    public function blockedIp(): BelongsTo
     {
         return $this->belongsTo(BlockedIp::class);
     }
 
-    public function scopeRecent($query, int $days = 7)
+    /**
+     * @param Builder<SecurityEvent> $query
+     * @return Builder<SecurityEvent>
+     */
+    public function scopeRecent(Builder $query, int $days = 7): Builder
     {
         return $query->where('created_at', '>=', now()->subDays($days));
     }
 
-    public function scopeByType($query, string $type)
+    /**
+     * @param Builder<SecurityEvent> $query
+     * @return Builder<SecurityEvent>
+     */
+    public function scopeByType(Builder $query, string $type): Builder
     {
         return $query->where('event_type', $type);
     }
 
-    public function scopeBySeverity($query, string $severity)
+    /**
+     * @param Builder<SecurityEvent> $query
+     * @return Builder<SecurityEvent>
+     */
+    public function scopeBySeverity(Builder $query, string $severity): Builder
     {
         return $query->where('severity', $severity);
     }
 
-    public function scopeByIp($query, string $ip)
+    /**
+     * @param Builder<SecurityEvent> $query
+     * @return Builder<SecurityEvent>
+     */
+    public function scopeByIp(Builder $query, string $ip): Builder
     {
         return $query->where('ip', $ip);
     }

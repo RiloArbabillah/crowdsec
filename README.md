@@ -52,7 +52,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 - Laravel `^10.0`, `^11.0`, or `^12.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
-The latest stable package release is `v1.2.0`.
+The latest stable package release is `v1.3.0`.
 
 ## Quick Start
 
@@ -515,10 +515,10 @@ All tables are managed by the package migrations loaded by the service provider.
 9. Enable a shared cache store for high-traffic or multi-instance deployments.
 10. Treat detection as defense in depth and continue using validation, authorization, secure coding, and infrastructure controls.
 
-Performance depends on traffic, request size, database, cache, enabled enrichment, and deployment hardware. Run the included benchmark suite in an environment representative of production:
+Performance depends on traffic, request size, database, cache, enabled enrichment, and deployment hardware. Run the benchmark separately from functional tests in an environment representative of production:
 
 ```bash
-vendor/bin/phpunit tests/Benchmark --testdox
+composer benchmark
 ```
 
 ## Development
@@ -534,10 +534,13 @@ Run the automated checks before submitting a pull request:
 ```bash
 composer test
 composer analyse
+composer benchmark
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, runs a Composer security audit, and enforces Larastan/PHPStan level 5 across all package source and route files.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, validates SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 6 across all package source and route files.
+
+The versioned WAF accuracy corpus covers all 15 built-in attack categories plus representative legitimate requests. A zero-failure corpus run guards known false positives, but it is not a statistical claim about production traffic.
 
 Stable releases use the manual `Release` workflow. It requires matching README and CHANGELOG metadata, a successful `Tests` run on the current `master` commit, and passing release quality gates before it creates an annotated tag and GitHub Release.
 

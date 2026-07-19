@@ -28,6 +28,7 @@ class CrowdSecStats extends Command
         return Command::SUCCESS;
     }
 
+    /** @return array<string, mixed> */
     protected function getStats(): array
     {
         return [
@@ -63,6 +64,7 @@ class CrowdSecStats extends Command
         ];
     }
 
+    /** @param array<string, mixed> $stats */
     protected function displayStats(array $stats): void
     {
         $this->info('=== CrowdSec Protection Statistics ===');

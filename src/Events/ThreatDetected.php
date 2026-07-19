@@ -11,6 +11,7 @@ class ThreatDetected
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
+    /** @param list<array<string, mixed>> $threats */
     public function __construct(
         public string $ip,
         public array $threats,

@@ -3,6 +3,7 @@
 namespace RiloArbabillah\LaravelCrowdSec\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class CrowdSecExport extends Command
@@ -56,7 +57,8 @@ class CrowdSecExport extends Command
         return Command::SUCCESS;
     }
 
-    protected function formatJson($events): string
+    /** @param Collection<int, SecurityEvent> $events */
+    protected function formatJson(Collection $events): string
     {
         return $events->map(fn ($event) => [
             'timestamp' => $event->created_at->toISOString(),
@@ -84,7 +86,8 @@ class CrowdSecExport extends Command
         ])->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
-    protected function formatCsv($events): string
+    /** @param Collection<int, SecurityEvent> $events */
+    protected function formatCsv(Collection $events): string
     {
         $lines = [implode(',', [
             'timestamp', 'ip', 'event_type', 'severity', 'request_uri', 'request_method', 'user_agent',
@@ -127,7 +130,8 @@ class CrowdSecExport extends Command
         return '"'.str_replace('"', '""', (string) ($value ?? '')).'"';
     }
 
-    protected function formatSyslog($events): string
+    /** @param Collection<int, SecurityEvent> $events */
+    protected function formatSyslog(Collection $events): string
     {
         $lines = [];
 

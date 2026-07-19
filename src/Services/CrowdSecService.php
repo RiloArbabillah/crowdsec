@@ -17,6 +17,7 @@ use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class CrowdSecService
 {
+    /** @var array<string, mixed> */
     protected array $scenarios;
 
     /**
@@ -69,6 +70,7 @@ class CrowdSecService
      *       'block_duration' => 720,
      *   ]);
      */
+    /** @param array<string, mixed> $config */
     public function registerScenario(string $name, array $config): self
     {
         $this->scenarios[$name] = array_merge([
@@ -84,6 +86,7 @@ class CrowdSecService
     /**
      * Get all registered scenarios (built-in + custom).
      */
+    /** @return array<string, array<string, mixed>> */
     public function getScenarios(): array
     {
         return array_diff_key($this->scenarios, array_flip(self::NON_SCENARIO_KEYS));
@@ -161,6 +164,9 @@ class CrowdSecService
     /**
      * Analyze a request for security threats.
      * Returns detected threats without logging or blocking — caller is responsible for those.
+     *
+     * @param list<string> $excludedBodyFields
+     * @return list<array<string, mixed>>
      */
     public function analyzeRequest(Request $request, array $excludedBodyFields = []): array
     {
@@ -169,6 +175,9 @@ class CrowdSecService
 
     /**
      * Check request against WAF patterns with multi-layer decoding
+     *
+     * @param list<string> $excludedBodyFields
+     * @return list<array<string, mixed>>
      */
     public function checkWafPatterns(Request $request, array $excludedBodyFields = []): array
     {
@@ -316,6 +325,8 @@ class CrowdSecService
     /**
      * Produce multiple decoded versions of input for multi-layer attack detection.
      * Catches double-URL-encoding, hex encoding, and unicode escapes.
+     *
+     * @return list<string>
      */
     protected function multiDecode(string $input): array
     {
@@ -382,6 +393,8 @@ class CrowdSecService
 
     /**
      * Inspect uploaded files for dangerous content.
+     *
+     * @return list<array<string, mixed>>
      */
     protected function inspectFileUploads(Request $request): array
     {
@@ -439,6 +452,8 @@ class CrowdSecService
 
     /**
      * Inspect JWT tokens for injected claims.
+     *
+     * @return list<array<string, mixed>>
      */
     protected function inspectJwtPayloads(Request $request): array
     {
@@ -530,6 +545,9 @@ class CrowdSecService
 
     /**
      * Extract and flatten body data for checking (supports JSON, form data, XML)
+     *
+     * @param list<string> $excludedBodyFields
+     * @return array<string, string>
      */
     protected function extractBodyData(Request $request, array $excludedBodyFields = []): array
     {
@@ -556,7 +574,7 @@ class CrowdSecService
 
         // Flatten the data for pattern matching
         if (! empty($data)) {
-            $this->flattenData($data, '', $flatData, 0, $excludedBodyFields);
+            $flatData = $this->flattenData($data, '', $flatData, 0, $excludedBodyFields);
         }
 
         return $flatData;
@@ -564,16 +582,21 @@ class CrowdSecService
 
     /**
      * Recursively flatten data array for pattern matching
+     *
+     * @param array<array-key, mixed> $data
+     * @param array<string, string> $flatData
+     * @param list<string> $excludedFields
+     * @return array<string, string>
      */
     protected function flattenData(
         array $data,
         string $prefix,
-        array &$flatData,
+        array $flatData,
         int $depth = 0,
         array $excludedFields = [],
-    ): void {
+    ): array {
         if ($depth > 10) {
-            return;
+            return $flatData;
         }
 
         foreach ($data as $key => $value) {
@@ -594,11 +617,13 @@ class CrowdSecService
             $fullKey = $prefix ? "{$prefix}[{$key}]" : $key;
 
             if (is_array($value)) {
-                $this->flattenData($value, $fullKey, $flatData, $depth + 1, $excludedFields);
+                $flatData = $this->flattenData($value, $fullKey, $flatData, $depth + 1, $excludedFields);
             } else {
                 $flatData[$fullKey] = is_string($value) ? $value : (string) $value;
             }
         }
+
+        return $flatData;
     }
 
     /**
@@ -676,6 +701,8 @@ class CrowdSecService
 
     /**
      * Add threat score based on detected threats
+     *
+     * @param array<int, array<string, mixed>> $threats
      */
     public function addThreatScoreFromThreats(string $ip, array $threats): void
     {
@@ -845,6 +872,8 @@ class CrowdSecService
 
     /**
      * Log a security event
+     *
+     * @param array<int, array<string, mixed>> $threats
      */
     public function logEvent(
         string $ip,
@@ -914,6 +943,8 @@ class CrowdSecService
 
     /**
      * Get statistics
+     *
+     * @return array<string, mixed>
      */
     public function getStats(): array
     {
@@ -933,6 +964,9 @@ class CrowdSecService
 
     /**
      * Get threats that should be blocked (critical + high + medium severity)
+     *
+     * @param array<int, array<string, mixed>> $threats
+     * @return array<int, array<string, mixed>>
      */
     public function getBlockingThreats(array $threats): array
     {
@@ -942,6 +976,8 @@ class CrowdSecService
 
     /**
      * Compare severity levels and return the highest.
+     *
+     * @param list<string> $severities
      */
     public function getMaxSeverity(array $severities): string
     {
@@ -985,6 +1021,8 @@ class CrowdSecService
 
     /**
      * Internal logging helper
+     *
+     * @param array<string, mixed> $context
      */
     protected function log(string $level, string $message, array $context = []): void
     {

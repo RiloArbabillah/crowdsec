@@ -15,6 +15,7 @@ class CrowdSecDoctor extends Command
 
     protected $description = 'Run health checks on CrowdSec configuration, database, and services';
 
+    /** @var list<array{check: string, status: string, message: string}> */
     protected array $results = [];
 
     protected int $score = 100;
@@ -56,6 +57,7 @@ class CrowdSecDoctor extends Command
         $this->checkBlockedMethods();
     }
 
+    /** @return list<array{check: string, status: string, message: string}> */
     public function getResults(): array
     {
         return $this->results;
@@ -167,7 +169,8 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $channels = collect(config('crowdsec-scenarios.notifications.channels', ['mail']))
+        $configuredChannels = config('crowdsec-scenarios.notifications.channels', ['mail']);
+        $channels = collect(is_array($configuredChannels) ? $configuredChannels : [])
             ->map(fn ($channel) => strtolower(trim((string) $channel)))
             ->filter()
             ->unique()
@@ -178,7 +181,8 @@ class CrowdSecDoctor extends Command
             return;
         }
 
-        $recipients = collect(config('crowdsec-scenarios.notifications.recipients', []))
+        $configuredRecipients = config('crowdsec-scenarios.notifications.recipients', []);
+        $recipients = collect(is_array($configuredRecipients) ? $configuredRecipients : [])
             ->map(fn ($recipient) => trim((string) $recipient))
             ->filter()
             ->values();
@@ -418,6 +422,10 @@ class CrowdSecDoctor extends Command
         $this->score = max(0, $this->score - $penalty);
     }
 
+    /**
+     * @param array<array-key, mixed> $middleware
+     * @return list<string>
+     */
     protected function normalizedMiddleware(array $middleware): array
     {
         return collect($middleware)
@@ -427,6 +435,7 @@ class CrowdSecDoctor extends Command
             ->all();
     }
 
+    /** @param list<string> $middleware */
     protected function hasAuthMiddleware(array $middleware): bool
     {
         return collect($middleware)->contains(fn ($item) => str_contains($item, 'auth'));
@@ -481,6 +490,7 @@ class CrowdSecDoctor extends Command
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
+    /** @return list<string> */
     protected function getRecommendations(): array
     {
         $recs = [];

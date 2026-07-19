@@ -27,6 +27,8 @@ class SecurityEventContextService
 
     /**
      * Collect safe, normalized context for a detected security event.
+     *
+     * @return array<string, mixed>
      */
     public function collect(Request $request): array
     {
@@ -76,6 +78,10 @@ class SecurityEventContextService
         return Str::limit(($base === false ? $referer : $base).'?'.$redactedQuery, 2048, '');
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $threats
+     * @return array<int, array<string, mixed>>
+     */
     public function sanitizeThreats(array $threats, Request $request): array
     {
         $redactedQuery = $this->redactQuery($request);
@@ -181,6 +187,7 @@ class SecurityEventContextService
         }
     }
 
+    /** @return array{country_code: ?string, asn: ?int, isp: ?string} */
     protected function geoContext(Request $request): array
     {
         $empty = ['country_code' => null, 'asn' => null, 'isp' => null];
@@ -203,6 +210,7 @@ class SecurityEventContextService
         }
     }
 
+    /** @return array{browser: ?string, os: ?string, device_type: ?string} */
     protected function clientContext(Request $request): array
     {
         $empty = ['browser' => null, 'os' => null, 'device_type' => null];
@@ -279,6 +287,10 @@ class SecurityEventContextService
         return is_numeric($asn) && (int) $asn >= 0 ? (int) $asn : null;
     }
 
+    /**
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
     protected function redactArray(array $data): array
     {
         foreach ($data as $key => $value) {
@@ -314,6 +326,7 @@ class SecurityEventContextService
         return in_array($key, $this->sensitiveKeys(), true);
     }
 
+    /** @return list<string> */
     protected function sensitiveKeys(): array
     {
         return array_values(array_unique(array_map(

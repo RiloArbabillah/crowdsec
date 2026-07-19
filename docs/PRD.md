@@ -5,7 +5,7 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.2.x (stable)                    |
+| **Version**      | 1.3.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
 | **Last Updated** | 2026-07-19                         |
@@ -41,7 +41,7 @@ Aplikasi Laravel rentan terhadap serangan web yang umum seperti **SQL Injection,
 | Metric                                       | Target    |
 | -------------------------------------------- | --------- |
 | Installation time (composer install → aktif) | < 5 menit |
-| False positive rate pada traffic normal      | < 0.1%    |
+| False positive pada corpus benign versioned  | 0         |
 | Latency overhead per request                 | < 5ms     |
 | Attack detection coverage (OWASP Top 10)     | ≥ 80%     |
 | Test coverage (unit test)                    | ≥ 85%     |
@@ -452,7 +452,7 @@ routes/
 | `illuminate/*` (10.x/11.x/12.x) | Runtime | Core Laravel components |
 | `orchestra/testbench`      | Dev     | Testing framework       |
 | `phpunit/phpunit`          | Dev     | Test runner             |
-| `phpstan/phpstan`          | Dev     | Static analysis level 5 |
+| `phpstan/phpstan`          | Dev     | Static analysis level 6 |
 | `larastan/larastan`        | Dev     | Laravel-aware analysis  |
 | Database (any)             | Runtime | Untuk 4 tabel package   |
 
@@ -523,6 +523,16 @@ routes/
 | PHP 8.4 compatibility matrix              | Should Have | ✅ Done |
 | Guarded release workflow                  | Should Have | ✅ Done |
 
+### Phase 5: v1.3.0 ✅ COMPLETED
+
+| Task                                      | Priority    | Status  |
+| ----------------------------------------- | ----------- | ------- |
+| Minimum 85% source line coverage gate     | Must Have   | ✅ Done |
+| Versioned WAF accuracy corpus              | Must Have   | ✅ Done |
+| MySQL 8.4 and PostgreSQL 16 CI validation | Must Have   | ✅ Done |
+| Larastan/PHPStan level 6                  | Should Have | ✅ Done |
+| Dedicated performance benchmark job       | Should Have | ✅ Done |
+
 ---
 
 ## 11. Acceptance Criteria
@@ -577,7 +587,10 @@ routes/
 - [x] Login tetap menginspeksi input non-secret
 - [x] Autentikasi sukses tidak otomatis menghapus block atau threat score
 - [x] Rate limiter route atomic dan mengirim waktu reset aktual
-- [x] Larastan/PHPStan level 5 memeriksa seluruh `src` dan `routes`
+- [x] Larastan/PHPStan level 6 memeriksa seluruh `src` dan `routes`
+- [x] Source line coverage minimal 85% divalidasi melalui PCOV dan Clover
+- [x] Corpus akurasi mencakup 15 kategori serangan dan input benign
+- [x] Migration dan state mutation tervalidasi pada SQLite, MySQL 8.4, dan PostgreSQL 16
 - [x] CI memetakan Laravel 10/11/12 ke Testbench yang kompatibel secara eksplisit
 - [x] Notification cooldown diperoleh secara atomic
 - [x] Login threshold mengizinkan configured allowance sebelum block

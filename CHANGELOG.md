@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-19
+
+### Added
+
+- **Accuracy Corpus** — a versioned WAF corpus verifies all 15 attack categories and representative legitimate Laravel requests
+- **Database Compatibility CI** — dedicated MySQL 8.4 and PostgreSQL 16 jobs validate migrations, block escalation, audit records, and independent behavior windows
+- **Coverage Gate** — PCOV and a repository-owned Clover validator enforce at least 85% source line coverage in CI
+
+### Changed
+
+- **Static Analysis** — Larastan/PHPStan now runs at level 6 with typed model scopes, service arrays, GeoIP results, event context, notifications, and facade contracts
+- **Test Workflow** — performance benchmarks move out of the default test suite into the explicit `composer benchmark` command and a dedicated CI job
+- **Database Test Harness** — package tests can select SQLite, MySQL, or PostgreSQL through isolated `TEST_DB_*` environment variables
+
+### Fixed
+
+- **Root Git Probe Detection** — `/.git/config` is now detected by the directory-bruteforce scenario in addition to nested `.git` paths
+
+### Upgrade Notes
+
+- No database migration or application configuration change is required
+- Existing public facade, middleware, event, route, and model behavior remains compatible
+- Contributors should use `composer test`, `composer analyse`, and `composer benchmark` as separate quality checks
+
 ## [1.2.0] - 2026-07-19
 
 ### Added

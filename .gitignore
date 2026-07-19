@@ -10,3 +10,4 @@ phpunit.xml.dist.bak
 /.ai
 /.agents
 /storage/
+/build/

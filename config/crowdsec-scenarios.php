@@ -143,7 +143,7 @@ return [
     // Directory bruteforce patterns (anchored to reduce false positives)
     'directory_bruteforce' => [
         'patterns' => [
-            '/\/\.git\//i',
+            '/(?:^|\/)\.git(?:\/|$)/i',
             '/\/\.env$/i',
             '/\/\.env\./i',
             '/\/wp-admin/i',

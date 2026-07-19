@@ -39,16 +39,28 @@ class AuditLog extends Model
     // SCOPES
     // =========================================================================
 
+    /**
+     * @param Builder<AuditLog> $query
+     * @return Builder<AuditLog>
+     */
     public function scopeForIp(Builder $query, string $ip): Builder
     {
         return $query->where('target_ip', $ip);
     }
 
+    /**
+     * @param Builder<AuditLog> $query
+     * @return Builder<AuditLog>
+     */
     public function scopeAction(Builder $query, string $action): Builder
     {
         return $query->where('action', $action);
     }
 
+    /**
+     * @param Builder<AuditLog> $query
+     * @return Builder<AuditLog>
+     */
     public function scopeBetween(Builder $query, string $from, string $to): Builder
     {
         return $query->whereBetween('created_at', [$from, $to]);
@@ -61,6 +73,7 @@ class AuditLog extends Model
     /**
      * Record an audit log entry.
      */
+    /** @param array<string, mixed> $metadata */
     public static function record(string $action, ?string $targetIp = null, array $metadata = [], string $actor = 'system'): self
     {
         return static::create([

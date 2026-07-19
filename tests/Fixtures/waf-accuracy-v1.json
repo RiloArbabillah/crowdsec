@@ -1,0 +1,42 @@
+{
+    "version": 1,
+    "malicious": [
+        {"scenario": "sql_injection", "path": "/search?q=1%20UNION%20SELECT%20password%20FROM%20users"},
+        {"scenario": "xss", "path": "/search?q=%3Cscript%3Ealert(1)%3C/script%3E"},
+        {"scenario": "path_traversal", "path": "/download?file=../../etc/passwd"},
+        {"scenario": "command_injection", "path": "/run?cmd=test%3Bcat%20/etc/passwd"},
+        {"scenario": "file_inclusion", "path": "/view?file=php://filter/convert.base64-encode/resource=index.php"},
+        {"scenario": "php_serialization", "path": "/import?data=O%3A8%3A%22Exploit%22%3A0%3A%7B%7D"},
+        {"scenario": "directory_bruteforce", "path": "/.git/config"},
+        {"scenario": "header_injection", "path": "/redirect", "headers": {"Referer": "https://example.com/%0d%0aX-Injected:true"}},
+        {"scenario": "suspicious_user_agent", "path": "/", "headers": {"User-Agent": "sqlmap/1.8"}},
+        {"scenario": "ssrf", "path": "/proxy?url=http://169.254.169.254/latest/meta-data/"},
+        {"scenario": "xxe", "path": "/xml", "method": "POST", "content_type": "text/xml", "content": "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><foo>&xxe;</foo>"},
+        {"scenario": "nosql_injection", "path": "/users?name%5B%24ne%5D=admin"},
+        {"scenario": "ldap_injection", "path": "/directory?user=admin%29%28%7C%28uid%3D%2A%29%29"},
+        {"scenario": "ssti", "path": "/preview?name=%7B%7B7%2A7%7D%7D"},
+        {"scenario": "open_redirect", "path": "/login?redirect=https://evil.example/phish"}
+    ],
+    "benign": [
+        {"path": "/"},
+        {"path": "/products?page=2&sort=price"},
+        {"path": "/search?q=laravel%20security"},
+        {"path": "/docs/sql/select-basics"},
+        {"path": "/articles/javascript-introduction"},
+        {"path": "/files/report-2026.pdf"},
+        {"path": "/redirect?to=/dashboard"},
+        {"path": "/users?email=person%40example.com"},
+        {"path": "/api/orders?status=pending"},
+        {"path": "/health", "headers": {"User-Agent": "UptimeRobot/2.0"}},
+        {"path": "/webhooks/provider", "method": "POST", "body": {"event": "invoice.paid", "id": "evt_123"}},
+        {"path": "/comments", "method": "POST", "body": {"message": "Use SELECT with a query builder."}},
+        {"path": "/profile", "method": "PATCH", "body": {"name": "O'Reilly", "city": "Makassar"}},
+        {"path": "/api/filter", "method": "POST", "body": {"operator": "greater_than", "value": 10}},
+        {"path": "/login", "method": "POST", "body": {"email": "admin@example.com", "password": "correct horse battery staple"}},
+        {"path": "/assets/app.js"},
+        {"path": "/images/logo.svg"},
+        {"path": "/admin/reports"},
+        {"path": "/api/v1/users/42"},
+        {"path": "/locale?id=en_US"}
+    ]
+}

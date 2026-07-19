@@ -20,7 +20,7 @@ jobs:
         with:
           php-version: '8.3'
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
-          coverage: none
+          coverage: pcov
 
       - name: Get Composer Cache Directory
         id: quality-composer-cache
@@ -46,6 +46,9 @@ jobs:
 
       - name: Run static analysis
         run: composer analyse
+
+      - name: Run coverage gate
+        run: composer coverage
 
   tests:
     runs-on: ubuntu-latest
@@ -119,3 +122,88 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit --colors=always
+
+  database:
+    runs-on: ubuntu-latest
+    name: Database - ${{ matrix.database }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: mysql
+            username: root
+            password: ''
+          - database: pgsql
+            username: postgres
+            password: postgres
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: crowdsec_testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      pgsql:
+        image: postgres:16
+        env:
+          POSTGRES_DB: crowdsec_testing
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_mysql, pdo_pgsql
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run database compatibility tests
+        env:
+          TEST_DB_CONNECTION: ${{ matrix.database }}
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_DATABASE: crowdsec_testing
+          TEST_DB_USERNAME: ${{ matrix.username }}
+          TEST_DB_PASSWORD: ${{ matrix.password }}
+        run: vendor/bin/phpunit tests/Feature/DatabaseCompatibilityTest.php --colors=always
+
+  benchmark:
+    runs-on: ubuntu-latest
+    name: Performance Benchmark
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run performance benchmark
+        run: composer benchmark

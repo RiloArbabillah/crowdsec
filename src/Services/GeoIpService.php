@@ -33,6 +33,8 @@ class GeoIpService
 
     /**
      * Fetch GeoIP data from configured provider.
+     *
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
      */
     protected function fetchFromProvider(string $ip): array
     {
@@ -54,6 +56,8 @@ class GeoIpService
 
     /**
      * Fetch GeoIP data over HTTPS from ipwho.is.
+     *
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
      */
     protected function fetchFromIpWhoIs(string $ip): array
     {
@@ -80,6 +84,8 @@ class GeoIpService
 
     /**
      * ip-api.com provider (free, 45 req/min).
+     *
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
      */
     protected function fetchFromIpApi(string $ip): array
     {
@@ -109,6 +115,8 @@ class GeoIpService
     /**
      * Custom callback provider.
      * Configure with: config('crowdsec-scenarios.geoip.custom_callback')
+     *
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
      */
     protected function fetchFromCustom(string $ip): array
     {
@@ -128,6 +136,7 @@ class GeoIpService
         return ! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
     }
 
+    /** @return array{country: null, country_code: null, region: null, city: null, lat: null, lon: null, asn: null, isp: null} */
     protected function emptyResult(): array
     {
         return [
@@ -155,6 +164,10 @@ class GeoIpService
         return is_numeric($value) && (int) $value >= 0 ? (int) $value : null;
     }
 
+    /**
+     * @param array<string, mixed> $result
+     * @return array{country: ?string, country_code: ?string, region: ?string, city: ?string, lat: ?float, lon: ?float, asn: ?int, isp: ?string}
+     */
     protected function normalizeResult(array $result): array
     {
         return [

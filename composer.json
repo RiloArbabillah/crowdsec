@@ -60,6 +60,12 @@
     "prefer-stable": true,
     "scripts": {
         "analyse": "phpstan analyse --memory-limit=512M --no-progress",
+        "benchmark": "phpunit tests/Benchmark --testdox",
+        "coverage": [
+            "@php -r \"is_dir('build/logs') || mkdir('build/logs', 0777, true);\"",
+            "phpunit --coverage-clover build/logs/clover.xml",
+            "@php tools/check-coverage.php build/logs/clover.xml 85"
+        ],
         "test": "phpunit"
     }
 }
