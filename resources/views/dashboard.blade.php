@@ -127,6 +127,147 @@
             </div>
         </div>
 
+        {{-- Whitelist --}}
+        @if(config('crowdsec-scenarios.api.enabled', false))
+        <div class="card" style="margin-top: 24px;">
+            <h2>Dynamic IP Whitelist</h2>
+            <p style="color: #94a3b8; font-size: 12px; margin: 8px 0 16px 0;">
+                Add or remove trusted IPs at runtime. Static defaults from
+                <code style="color:#cbd5e1;">config('crowdsec-scenarios.whitelist_ips')</code>
+                are also active and shown below.
+            </p>
+
+            <form id="whitelist-add-form" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;" onsubmit="return crowdsecWhitelistSubmit(event)">
+                <input id="wl-ip" type="text" placeholder="10.0.0.0/8" required
+                    style="flex:1; min-width:160px; padding:8px 10px; background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:6px; font-size:13px;">
+                <input id="wl-label" type="text" placeholder="Label (e.g. Office VPN)"
+                    style="flex:1; min-width:160px; padding:8px 10px; background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:6px; font-size:13px;">
+                <input id="wl-note" type="text" placeholder="Note (optional)"
+                    style="flex:1; min-width:160px; padding:8px 10px; background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:6px; font-size:13px;">
+                <input id="wl-expires" type="datetime-local"
+                    style="flex:1; min-width:200px; padding:8px 10px; background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:6px; font-size:13px;">
+                <button type="submit"
+                    style="padding:8px 16px; background:#1e40af; color:#fff; border:0; border-radius:6px; font-size:13px; cursor:pointer;">
+                    Add to whitelist
+                </button>
+            </form>
+            <div id="whitelist-message" style="font-size:12px; margin-bottom:12px;"></div>
+
+            <div class="table-wrap"><table>
+                <thead>
+                    <tr><th>IP / CIDR</th><th>Label</th><th>Note</th><th>Expires</th><th>Added by</th><th>Action</th></tr>
+                </thead>
+                <tbody id="whitelist-rows">
+                    <tr><td colspan="6" style="text-align:center; color:#64748b;">Loading…</td></tr>
+                </tbody>
+            </table></div>
+
+            @php
+                $staticWhitelist = (array) config('crowdsec-scenarios.whitelist_ips', []);
+            @endphp
+            @if(!empty($staticWhitelist))
+            <div style="margin-top:16px; font-size:12px; color:#94a3b8;">
+                <strong>Config-level (static):</strong>
+                <span style="color:#cbd5e1;">{{ implode(', ', $staticWhitelist) }}</span>
+            </div>
+            @endif
+        </div>
+
+        <script>
+        (function () {
+            const apiBase = @json(route('crowdsec.dashboard', [], false) ? '/api/crowdsec' : '/api/crowdsec');
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            async function loadWhitelist() {
+                const rows = document.getElementById('whitelist-rows');
+                const msg = document.getElementById('whitelist-message');
+                msg.textContent = '';
+                try {
+                    const res = await fetch(apiBase + '/whitelist', { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const json = await res.json();
+                    const data = json.data || json;
+                    if (!data || data.length === 0) {
+                        rows.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b;">No dynamic entries yet.</td></tr>';
+                        return;
+                    }
+                    rows.innerHTML = data.map(function (e) {
+                        const expires = e.expires_at ? new Date(e.expires_at).toLocaleString() : '—';
+                        return '<tr>'
+                            + '<td><code style="color:#cbd5e1;">' + escape(e.ip) + '</code></td>'
+                            + '<td>' + escape(e.label || '—') + '</td>'
+                            + '<td>' + escape(e.note || '—') + '</td>'
+                            + '<td>' + expires + '</td>'
+                            + '<td>' + escape(e.created_by_label || (e.created_by ? ('#' + e.created_by) : '—')) + '</td>'
+                            + '<td><button data-ip="' + escape(e.ip) + '" class="wl-remove" style="background:#7f1d1d; color:#fecaca; border:0; padding:4px 10px; border-radius:4px; font-size:12px; cursor:pointer;">Remove</button></td>'
+                            + '</tr>';
+                    }).join('');
+                } catch (err) {
+                    rows.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f87171;">Failed to load: ' + escape(String(err)) + '</td></tr>';
+                }
+            }
+
+            function escape(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+
+            window.crowdsecWhitelistSubmit = async function (ev) {
+                ev.preventDefault();
+                const msg = document.getElementById('whitelist-message');
+                const body = {
+                    ip: document.getElementById('wl-ip').value.trim(),
+                    label: document.getElementById('wl-label').value.trim() || null,
+                    note: document.getElementById('wl-note').value.trim() || null,
+                    expires_at: document.getElementById('wl-expires').value || null,
+                };
+                if (!body.ip) { msg.textContent = 'IP is required.'; msg.style.color = '#f87171'; return false; }
+                msg.textContent = 'Adding…'; msg.style.color = '#94a3b8';
+                try {
+                    const res = await fetch(apiBase + '/whitelist', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(body),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.message || ('HTTP ' + res.status));
+                    }
+                    document.getElementById('whitelist-add-form').reset();
+                    msg.textContent = 'Added.'; msg.style.color = '#4ade80';
+                    loadWhitelist();
+                } catch (err) {
+                    msg.textContent = 'Failed: ' + err.message; msg.style.color = '#f87171';
+                }
+                return false;
+            };
+
+            document.addEventListener('click', async function (ev) {
+                const btn = ev.target.closest && ev.target.closest('.wl-remove');
+                if (!btn) return;
+                const ip = btn.getAttribute('data-ip');
+                if (!ip) return;
+                if (!window.confirm('Remove ' + ip + ' from the dynamic whitelist?')) return;
+                try {
+                    const res = await fetch(apiBase + '/whitelist/' + encodeURIComponent(ip), {
+                        method: 'DELETE',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                        credentials: 'same-origin',
+                    });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    loadWhitelist();
+                } catch (err) {
+                    alert('Remove failed: ' + err.message);
+                }
+            });
+
+            loadWhitelist();
+        })();
+        </script>
+        @endif
+
         @if($topCountries->isNotEmpty() || $deviceBreakdown->isNotEmpty())
         <div class="grid grid-2">
             <div class="card">

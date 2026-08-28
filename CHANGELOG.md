@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic IP Whitelist** — new `whitelisted_ips` table plus `crowdsec:whitelist` Artisan command, `GET/POST/DELETE /api/crowdsec/whitelist` REST endpoints, and a dashboard tab let trusted IPs be added or removed at runtime without editing `config/crowdsec-scenarios.php`
+- **Hybrid Whitelist Lookup** — `isWhitelisted()` now checks both the static `whitelist_ips` config and the DB layer, so existing deployments keep their defaults while gaining dynamic control
+- **Whitelist Expiration** — DB entries support `expires_at` for time-boxed access (e.g. contractor), with a daily `crowdsec:whitelist purge-expired` scheduled task
+- **Whitelist Audit Trail** — every add/remove is recorded in `crowdsec_audit_logs` with `action='whitelist_modified'` when audit logging is enabled
+- **Whitelist Health Check** — `crowdsec:doctor` now reports combined config + DB counts and warns on dynamic entries with no label or note
+
+### Changed
+
+- **Whitelist Performance** — DB lookups follow the same opt-in caching pattern as blocked IPs (30s TTL when `cache.enabled=true`, immediate otherwise)
+- **README** — new "Dynamic IP Whitelist" section with CLI, API, and programmatic examples
+
 ## [1.3.0] - 2026-07-19
 
 ### Added

@@ -49,7 +49,7 @@ class DoctorCommandTest extends TestCase
     public function test_doctor_command_checks_database_migrations(): void
     {
         $this->artisan('crowdsec:doctor')
-            ->expectsOutputToContain('3/3 tables found')
+            ->expectsOutputToContain('4/4 tables found')
             ->assertSuccessful();
     }
 
@@ -64,6 +64,31 @@ class DoctorCommandTest extends TestCase
     {
         $this->artisan('crowdsec:doctor')
             ->expectsOutputToContain('Whitelist')
+            ->assertSuccessful();
+    }
+
+    public function test_doctor_command_reports_db_whitelist_entries(): void
+    {
+        \RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp::create([
+            'ip' => '10.0.0.0/8',
+            'label' => 'Office',
+            'is_active' => true,
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('dynamic (DB)')
+            ->assertSuccessful();
+    }
+
+    public function test_doctor_command_warns_on_anonymous_whitelist_entries(): void
+    {
+        \RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp::create([
+            'ip' => '10.0.0.0/8',
+            'is_active' => true,
+        ]);
+
+        $this->artisan('crowdsec:doctor')
+            ->expectsOutputToContain('no label/note')
             ->assertSuccessful();
     }
 

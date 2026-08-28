@@ -12,4 +12,7 @@ Route::prefix('api/crowdsec')
         Route::post('/block', [CrowdSecApiController::class, 'block']);
         Route::delete('/block/{ip}', [CrowdSecApiController::class, 'unblock']);
         Route::get('/check/{ip}', [CrowdSecApiController::class, 'check']);
+        Route::get('/whitelist', [CrowdSecApiController::class, 'whitelist']);
+        Route::post('/whitelist', [CrowdSecApiController::class, 'addWhitelist']);
+        Route::delete('/whitelist/{ip}', [CrowdSecApiController::class, 'removeWhitelist']);
     });

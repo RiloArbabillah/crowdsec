@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
+use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecWhitelist;
 use RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
@@ -73,6 +74,7 @@ class CrowdSecServiceProvider extends ServiceProvider
             $this->commands([
                 CrowdSecCleanup::class,
                 CrowdSecStats::class,
+                CrowdSecWhitelist::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecExport::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecDoctor::class,
             ]);
@@ -137,6 +139,11 @@ class CrowdSecServiceProvider extends ServiceProvider
             $schedule->command('crowdsec:cleanup --old-behaviors')
                 ->weekly()
                 ->description('CrowdSec: cleanup old behavior records');
+
+            // Purge expired whitelist entries daily
+            $schedule->command('crowdsec:whitelist purge-expired')
+                ->daily()
+                ->description('CrowdSec: purge expired whitelist entries');
         });
     }
 }

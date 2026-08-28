@@ -436,7 +436,10 @@ return [
         'critical' => 1440, // 24 hours
     ],
 
-    // Whitelist IPs (won't be blocked) — supports CIDR notation
+    // Whitelist IPs (won't be blocked) — supports CIDR notation.
+    // These are static defaults; for runtime management use
+    // `php artisan crowdsec:whitelist add …` or the
+    // `POST /api/crowdsec/whitelist` REST endpoint instead.
     'whitelist_ips' => [
         '127.0.0.1',
         '::1',

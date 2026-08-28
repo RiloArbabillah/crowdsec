@@ -14,6 +14,7 @@ use RiloArbabillah\LaravelCrowdSec\Models\AuditLog;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
+use RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp;
 
 class CrowdSecService
 {
@@ -118,22 +119,200 @@ class CrowdSecService
     }
 
     /**
-     * Check if an IP is whitelisted (supports exact match and CIDR notation)
+     * Check if an IP is whitelisted. Checks the static config array first
+     * (preserves backward compatibility) and then the database-backed
+     * `whitelisted_ips` table. The DB lookup is short-cached (30s).
      */
     public function isWhitelisted(string $ip): bool
     {
-        $whitelist = $this->scenarios['whitelist_ips'] ?? [];
-
-        foreach ($whitelist as $entry) {
-            if ($ip === $entry) {
-                return true;
-            }
-            if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
+        foreach ($this->scenarios['whitelist_ips'] ?? [] as $entry) {
+            if ($this->matchesWhitelistEntry($ip, (string) $entry)) {
                 return true;
             }
         }
 
+        return $this->isWhitelistedInDatabase($ip);
+    }
+
+    /**
+     * Match an IP against a single whitelist entry (exact or CIDR).
+     */
+    protected function matchesWhitelistEntry(string $ip, string $entry): bool
+    {
+        if ($ip === $entry) {
+            return true;
+        }
+        if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
+            return true;
+        }
         return false;
+    }
+
+    /**
+     * Look up the IP in the dynamic (DB-backed) whitelist.
+     */
+    protected function isWhitelistedInDatabase(string $ip): bool
+    {
+        if (! $this->isCacheEnabled()) {
+            return $this->matchesAnyEntry(
+                $ip,
+                WhitelistedIp::active()->notExpired()->pluck('ip')->all(),
+            );
+        }
+
+        $entries = $this->cacheStore()->remember(
+            $this->getWhitelistCacheKey(),
+            30,
+            fn () => WhitelistedIp::active()->notExpired()->pluck('ip')->all()
+        );
+
+        return $this->matchesAnyEntry($ip, $entries);
+    }
+
+    /**
+     * @param list<string> $entries
+     */
+    protected function matchesAnyEntry(string $ip, array $entries): bool
+    {
+        foreach ($entries as $entry) {
+            if ($this->matchesWhitelistEntry($ip, (string) $entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Validate a string is a single IP or a CIDR range.
+     */
+    public function isValidIpOrCidr(string $value): bool
+    {
+        if (str_contains($value, '/')) {
+            [$subnet, $bitsRaw] = explode('/', $value, 2);
+            if ($bitsRaw === '' || ! ctype_digit($bitsRaw)) {
+                return false;
+            }
+            if (! filter_var($subnet, FILTER_VALIDATE_IP)) {
+                return false;
+            }
+            $bits = (int) $bitsRaw;
+            $max = filter_var($subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? 32 : 128;
+            return $bits >= 0 && $bits <= $max;
+        }
+
+        return (bool) filter_var($value, FILTER_VALIDATE_IP);
+    }
+
+    /**
+     * Add (or update) a dynamic whitelist entry.
+     */
+    public function whitelistIp(
+        string $ip,
+        ?string $label = null,
+        ?string $note = null,
+        ?\DateTimeInterface $expiresAt = null,
+        ?int $createdBy = null,
+        ?string $createdByLabel = null,
+    ): WhitelistedIp {
+        $entry = WhitelistedIp::updateOrCreate(
+            ['ip' => $ip],
+            [
+                'label' => $label,
+                'note' => $note,
+                'expires_at' => $expiresAt,
+                'is_active' => true,
+                'created_by' => $createdBy,
+                'created_by_label' => $createdByLabel,
+            ],
+        );
+
+        $this->invalidateWhitelistCache();
+
+        $this->log('info', 'IP whitelisted', [
+            'ip' => $ip,
+            'label' => $label,
+            'expires_at' => $expiresAt?->format(DATE_ATOM),
+        ]);
+
+        if (config('crowdsec-scenarios.audit.enabled', false)) {
+            AuditLog::record('whitelist_modified', $ip, [
+                'action' => 'added',
+                'label' => $label,
+                'note' => $note,
+                'expires_at' => $expiresAt?->format(DATE_ATOM),
+                'actor_id' => $createdBy,
+                'actor_label' => $createdByLabel,
+            ]);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Deactivate a dynamic whitelist entry. Returns true only when an active
+     * entry was actually transitioned to inactive (idempotent: re-running on
+     * an already-inactive or unknown entry returns false).
+     */
+    public function unwhitelistIp(
+        string $ip,
+        ?int $actorId = null,
+        ?string $actorLabel = null,
+    ): bool {
+        $entry = WhitelistedIp::where('ip', $ip)->where('is_active', true)->first();
+        if (! $entry) {
+            return false;
+        }
+
+        $entry->update(['is_active' => false]);
+        $this->invalidateWhitelistCache();
+
+        $this->log('info', 'IP removed from whitelist', ['ip' => $ip]);
+
+        if (config('crowdsec-scenarios.audit.enabled', false)) {
+            AuditLog::record('whitelist_modified', $ip, [
+                'action' => 'removed',
+                'actor_id' => $actorId,
+                'actor_label' => $actorLabel,
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Hard-delete a dynamic whitelist entry. Returns true if a row was removed.
+     */
+    public function deleteWhitelistEntry(string $ip): bool
+    {
+        $deleted = (bool) WhitelistedIp::where('ip', $ip)->delete();
+        if ($deleted) {
+            $this->invalidateWhitelistCache();
+        }
+        return $deleted;
+    }
+
+    /**
+     * Permanently delete all expired dynamic whitelist entries.
+     */
+    public function purgeExpiredWhitelistEntries(): int
+    {
+        $deleted = WhitelistedIp::expired()->delete();
+        if ($deleted > 0) {
+            $this->invalidateWhitelistCache();
+        }
+        return $deleted;
+    }
+
+    public function invalidateWhitelistCache(): void
+    {
+        $this->cacheStore()->forget($this->getWhitelistCacheKey());
+    }
+
+    protected function getWhitelistCacheKey(): string
+    {
+        $prefix = $this->scenarios['cache']['prefix'] ?? 'crowdsec';
+
+        return "{$prefix}:whitelist:merged";
     }
 
     /**

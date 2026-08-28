@@ -35,14 +35,14 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 - Multi-layer URL and HTML entity decoding to detect encoded payloads
 - Temporary IP blocking with expiration and progressive escalation
 - Request-rate, 404, login-attempt, and threat-score behavior tracking
-- Exact-IP and CIDR allowlisting
+- Exact-IP and CIDR allowlisting with hybrid static-config + DB-backed runtime whitelist
 - Cached blocked-IP lookups for high-traffic applications
 - Security events with request correlation, route and response context, GeoIP/ASN data, pseudonymous user hashes, and parsed client information
 - Automatic redaction of sensitive query, cookie, authorization, and matched-source values
 - Email and Slack notifications with severity filtering and rate limiting
 - Honeypot and per-route rate-limiting middleware
 - REST management API, admin dashboard, and Prometheus-compatible metrics endpoint
-- Immutable audit records for manual block and unblock actions
+- Immutable audit records for manual block, unblock, and whitelist changes
 - JSON, CSV, and RFC 5424 Syslog exports
 - Health checks through `crowdsec:doctor`
 
@@ -391,6 +391,53 @@ CROWDSEC_AUDIT_RETENTION_DAYS=365
 
 Audit retention is enforced by `crowdsec:cleanup` when audit logging is enabled.
 
+### Dynamic IP Whitelist
+
+Two layers work together:
+
+1. **`whitelist_ips` (config)** — static defaults. Add loopback, monitoring services, or office networks here. Changes require a config publish/commit.
+2. **`whitelisted_ips` table (DB)** — runtime entries. Add or remove IPs without touching the codebase.
+
+Both layers are checked on every request. CIDR notation (`10.0.0.0/8`, `2001:db8::/32`) is supported. An IP is whitelisted if it matches an entry in **either** layer.
+
+Manage runtime entries via CLI, REST API, or the dashboard:
+
+```bash
+# Add
+php artisan crowdsec:whitelist add 10.0.0.0/8 --label="Office VPN" --note="trusted internal" --expires="2026-12-31"
+
+# List
+php artisan crowdsec:whitelist list
+
+# Remove
+php artisan crowdsec:whitelist remove 10.0.0.0/8
+
+# Purge expired rows (also runs daily via the schedule)
+php artisan crowdsec:whitelist purge-expired
+```
+
+```bash
+# REST API (requires api.enabled=true and auth middleware)
+curl -X POST https://yourapp.test/api/crowdsec/whitelist \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{"ip":"192.168.1.100","label":"Home","expires_at":"2026-12-31T23:59:59Z"}'
+
+curl -X DELETE https://yourapp.test/api/crowdsec/whitelist/192.168.1.100 \
+     -H "Authorization: Bearer <token>"
+```
+
+```php
+// Programmatic
+app('crowdsec')->whitelistIp('192.168.1.100', 'Home', 'office wifi', null, auth()->id(), auth()->user()->name);
+app('crowdsec')->unwhitelistIp('192.168.1.100');
+app('crowdsec')->isWhitelisted($request->ip()); // true if config OR DB layer matches
+```
+
+Every change is recorded in `crowdsec_audit_logs` with `action='whitelist_modified'` when audit logging is enabled. The middleware consults both layers on every request, so newly added IPs are honored on the very next request (DB layer is short-cached for 30s when `cache.enabled=true`; immediate otherwise).
+
+Expired entries are automatically purged by the daily scheduled task. Use the `expires_at` column for time-boxed access (e.g. contractor access for one week).
+
 ## Artisan Commands
 
 | Command | Purpose |
@@ -398,6 +445,7 @@ Audit retention is enforced by `crowdsec:cleanup` when audit logging is enabled.
 | `php artisan crowdsec:doctor` | Validate configuration, migrations, patterns, and integrations |
 | `php artisan crowdsec:stats` | Show blocks, event totals, threat counts, and top attackers |
 | `php artisan crowdsec:cleanup` | Expire bans and remove old event, behavior, and audit records |
+| `php artisan crowdsec:whitelist` | Manage the dynamic IP whitelist (list/add/remove/purge-expired) |
 | `php artisan crowdsec:export` | Export events as JSON, CSV, or RFC 5424 Syslog |
 
 ### Health checks and statistics
@@ -449,6 +497,7 @@ The package registers these tasks automatically through Laravel's scheduler:
 - Expired bans: daily
 - Security events older than 30 days: weekly
 - Inactive behavior records older than 30 days: weekly
+- Expired dynamic whitelist entries: daily
 
 The application must still run Laravel's scheduler in production, for example through a cron entry that invokes `php artisan schedule:run` every minute.
 
@@ -462,6 +511,7 @@ protected function schedule(Schedule $schedule): void
     $schedule->command('crowdsec:cleanup --expired')->daily();
     $schedule->command('crowdsec:cleanup --old-events')->weekly();
     $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+    $schedule->command('crowdsec:whitelist purge-expired')->daily();
 }
 ```
 
@@ -498,7 +548,8 @@ Because application traffic varies, test configuration changes against represent
 | `blocked_ips` | Active and historical IP blocks, reasons, and expiration |
 | `ip_behaviors` | Per-IP request, 404, login, threat-score, and block counters |
 | `security_events` | Detected threats and enriched request/response context |
-| `crowdsec_audit_logs` | Optional immutable records of manual block and unblock actions |
+| `whitelisted_ips` | Runtime IP/CIDR allowlist entries added via CLI, API, or dashboard |
+| `crowdsec_audit_logs` | Optional immutable records of manual block, unblock, and whitelist actions |
 
 All tables are managed by the package migrations loaded by the service provider.
 
@@ -507,7 +558,7 @@ All tables are managed by the package migrations loaded by the service provider.
 1. Run `php artisan crowdsec:doctor` after deployment and configuration changes.
 2. Protect sensitive routes first, then expand coverage after reviewing legitimate traffic.
 3. Configure trusted proxies so Laravel resolves the actual client IP.
-4. Add internal services and trusted networks to `whitelist_ips`, using CIDR entries where appropriate.
+4. Add internal services and trusted networks to `whitelist_ips` (config) or via `php artisan crowdsec:whitelist add …` (DB layer), using CIDR entries where appropriate.
 5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them.
 6. Configure Laravel mail or Slack before enabling notifications.
 7. Confirm `php artisan schedule:list` includes cleanup tasks and that the scheduler runs in production.

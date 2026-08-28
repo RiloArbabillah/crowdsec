@@ -8,6 +8,7 @@ use Illuminate\Routing\Controller;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
+use RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 
 class CrowdSecApiController extends Controller
@@ -132,11 +133,93 @@ class CrowdSecApiController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/crowdsec/whitelist — List dynamic whitelist entries
+     */
+    public function whitelist(Request $request): JsonResponse
+    {
+        $query = WhitelistedIp::query()->orderBy('created_at', 'desc');
+
+        if ($ip = $request->query('ip')) {
+            $query->where('ip', 'like', "%{$ip}%");
+        }
+        if ($label = $request->query('label')) {
+            $query->where('label', 'like', "%{$label}%");
+        }
+
+        return response()->json($query->paginate($this->perPage($request)));
+    }
+
+    /**
+     * POST /api/crowdsec/whitelist — Add an IP/CIDR to the dynamic whitelist
+     */
+    public function addWhitelist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ip' => 'required|string|max:45',
+            'label' => 'nullable|string|max:100',
+            'note' => 'nullable|string|max:1000',
+            'expires_at' => 'nullable|date|after:now',
+        ]);
+
+        if (! $this->service->isValidIpOrCidr($validated['ip'])) {
+            return response()->json(['message' => 'Invalid IP or CIDR notation'], 422);
+        }
+
+        $entry = $this->service->whitelistIp(
+            $validated['ip'],
+            $validated['label'] ?? null,
+            $validated['note'] ?? null,
+            isset($validated['expires_at']) ? new \DateTimeImmutable($validated['expires_at']) : null,
+            auth()->id(),
+            $this->actorLabel(),
+        );
+
+        return response()->json([
+            'message' => 'IP whitelisted successfully',
+            'data' => $entry,
+        ], 201);
+    }
+
+    /**
+     * DELETE /api/crowdsec/whitelist/{ip} — Remove an IP from the dynamic whitelist
+     */
+    public function removeWhitelist(string $ip): JsonResponse
+    {
+        $removed = $this->service->unwhitelistIp(
+            $ip,
+            auth()->id(),
+            $this->actorLabel(),
+        );
+
+        return response()->json([
+            'message' => $removed ? 'IP removed from whitelist' : 'IP was not on the dynamic whitelist',
+            'removed' => $removed,
+        ]);
+    }
+
     protected function perPage(Request $request): int
     {
         $value = $request->query('per_page');
         $perPage = is_scalar($value) ? (int) $value : 20;
 
         return max(1, min(100, $perPage));
+    }
+
+    protected function actorLabel(): ?string
+    {
+        $user = auth()->user();
+        if ($user === null) {
+            return null;
+        }
+
+        foreach (['name', 'email'] as $attribute) {
+            $value = $user->{$attribute} ?? null;
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

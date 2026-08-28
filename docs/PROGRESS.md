@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 19 Jul 2026
-> **Test suite:** 267 passed (525 assertions), plus 8 dedicated performance benchmarks
-> **Next focus:** validate `v1.3.0` quality gates on GitHub Actions and monitor the accuracy corpus
+> Last updated: 28 Aug 2026
+> **Test suite:** 301 passed (612 assertions), plus 9 dedicated performance benchmarks
+> **Next focus:** validate dynamic-whitelist quality gates on GitHub Actions
 
 ---
 
@@ -14,7 +14,7 @@
 - [x] `CrowdSecProtection` middleware — 10-step request processing pipeline
 - [x] Fail-open error handling (WAF error tidak crash aplikasi)
 - [x] Enable/disable via `CROWDSEC_ENABLED` env variable
-- [x] `isWhitelisted()` method on service (exact + CIDR matching)
+- [x] `isWhitelisted()` method on service (exact + CIDR matching, hybrid config + DB)
 
 ### Pattern Detection (15 Attack Types)
 
@@ -45,7 +45,10 @@
 - [x] IP blocking dengan expiration time
 - [x] Progressive escalation (2x durasi per re-offense, max 7 hari)
 - [x] IP unblocking (manual via Facade)
-- [x] IP whitelist (exact match + CIDR notation)
+- [x] IP whitelist — hybrid static config + DB-backed runtime entries
+- [x] **Dynamic whitelist** — `crowdsec:whitelist` command, REST API, dashboard tab; no config commit needed
+- [x] Whitelist expiration (`expires_at`) + daily auto-purge scheduled task
+- [x] Whitelist audit trail (every add/remove recorded in `crowdsec_audit_logs`)
 - [x] Block count tracking per IP
 - [x] **Caching layer** — cached blocked IP lookups (configurable TTL, store)
 

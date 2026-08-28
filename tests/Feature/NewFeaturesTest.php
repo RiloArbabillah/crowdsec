@@ -24,6 +24,7 @@ use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 use RiloArbabillah\LaravelCrowdSec\Notifications\SecurityAlertNotification;
 use RiloArbabillah\LaravelCrowdSec\Services\CrowdSecService;
 use RiloArbabillah\LaravelCrowdSec\Services\GeoIpService;
+use RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -876,6 +877,19 @@ class NewFeaturesTest extends TestCase
         $this->assertTrue($service->isWhitelisted('10.1.2.3'));
         $this->assertTrue($service->isWhitelisted('10.255.255.255'));
         $this->assertFalse($service->isWhitelisted('11.0.0.1'));
+    }
+
+    public function test_is_whitelisted_db_entry(): void
+    {
+        WhitelistedIp::create([
+            'ip' => '192.168.10.0/24',
+            'label' => 'DB test',
+            'is_active' => true,
+        ]);
+
+        $service = new CrowdSecService();
+        $this->assertTrue($service->isWhitelisted('192.168.10.5'));
+        $this->assertFalse($service->isWhitelisted('192.168.11.5'));
     }
 
     // =========================================================================

@@ -81,7 +81,7 @@ class CrowdSecDoctor extends Command
 
     protected function checkDatabaseMigrations(): void
     {
-        $tables = ['blocked_ips', 'ip_behaviors', 'security_events'];
+        $tables = ['blocked_ips', 'ip_behaviors', 'security_events', 'whitelisted_ips'];
         $found = 0;
 
         foreach ($tables as $table) {
@@ -364,14 +364,45 @@ class CrowdSecDoctor extends Command
 
     protected function checkWhitelist(): void
     {
-        $whitelist = config('crowdsec-scenarios.whitelist_ips', []);
+        $configWhitelist = config('crowdsec-scenarios.whitelist_ips', []);
+        $configCount = is_array($configWhitelist) ? count($configWhitelist) : 0;
 
-        if (empty($whitelist)) {
+        $dbCount = 0;
+        $anonymousCount = 0;
+        if (Schema::hasTable('whitelisted_ips')) {
+            $dbCount = (int) DB::table('whitelisted_ips')
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->count();
+            $anonymousCount = (int) DB::table('whitelisted_ips')
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('label')->orWhere('label', '');
+                })
+                ->where(function ($q) {
+                    $q->whereNull('note')->orWhere('note', '');
+                })
+                ->count();
+        }
+
+        $total = $configCount + $dbCount;
+
+        if ($total === 0) {
             $this->addResult('Whitelist', 'warn', 'Empty — consider adding trusted IPs', 5);
-        } elseif (count($whitelist) <= 2) {
-            $this->addResult('Whitelist', 'pass', count($whitelist) . ' IP(s) — consider adding trusted proxies');
         } else {
-            $this->addResult('Whitelist', 'pass', count($whitelist) . ' IP(s) configured');
+            $message = "{$total} active IP(s): {$configCount} from config, {$dbCount} dynamic (DB)";
+            $this->addResult('Whitelist', 'pass', $message);
+        }
+
+        if ($anonymousCount > 0) {
+            $this->addResult(
+                'Whitelist labels',
+                'warn',
+                "{$anonymousCount} dynamic entry(ies) have no label/note — add context for audit clarity",
+                3,
+            );
         }
     }
 

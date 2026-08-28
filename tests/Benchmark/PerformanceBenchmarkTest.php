@@ -154,6 +154,35 @@ class PerformanceBenchmarkTest extends TestCase
         echo "\n    ⏱  Whitelist bypass: " . round($avgMs, 3) . "ms avg";
     }
 
+    public function test_benchmark_db_whitelist_check(): void
+    {
+        // Seed a few dynamic whitelist entries
+        \RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp::create([
+            'ip' => '10.0.0.0/8',
+            'label' => 'bench',
+            'is_active' => true,
+        ]);
+        \RiloArbabillah\LaravelCrowdSec\Models\WhitelistedIp::create([
+            'ip' => '172.16.0.0/12',
+            'label' => 'bench',
+            'is_active' => true,
+        ]);
+
+        // First call primes the cache, subsequent calls measure cache hit performance
+        $this->service->isWhitelisted('10.5.6.7');
+        $this->service->isWhitelisted('172.20.0.1');
+
+        $avgMs = $this->benchmark(fn () => $this->service->isWhitelisted('192.168.5.5'));
+
+        $this->assertLessThan(
+            2,
+            $avgMs,
+            "DB-backed whitelist check (cached) should be < 2ms (was {$avgMs}ms)",
+        );
+
+        echo "\n    ⏱  DB whitelist check (cached): " . round($avgMs, 3) . "ms avg";
+    }
+
     // =========================================================================
     // IP check benchmarks
     // =========================================================================
