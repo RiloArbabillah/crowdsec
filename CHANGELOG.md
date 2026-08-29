@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-29
+
 ### Added
 
 - **Dynamic IP Whitelist** — new `whitelisted_ips` table plus `crowdsec:whitelist` Artisan command, `GET/POST/DELETE /api/crowdsec/whitelist` REST endpoints, and a dashboard tab let trusted IPs be added or removed at runtime without editing `config/crowdsec-scenarios.php`
@@ -19,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Whitelist Performance** — DB lookups follow the same opt-in caching pattern as blocked IPs (30s TTL when `cache.enabled=true`, immediate otherwise)
 - **README** — new "Dynamic IP Whitelist" section with CLI, API, and programmatic examples
+
+### Upgrade Notes
+
+- A new migration (`2026_08_28_000000_create_whitelisted_ips_table.php`) must be applied; existing deployments should run `php artisan migrate`
+- The dynamic whitelist layer is additive: existing static `whitelist_ips` entries continue to apply, and no behavior changes for previously whitelisted IPs
+- Audit logging of whitelist changes is gated by `audit.enabled`; no new audit records are written when audit logging is disabled
 
 ## [1.3.0] - 2026-07-19
 
