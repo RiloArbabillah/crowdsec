@@ -227,6 +227,13 @@ class CrowdSecService
         );
 
         $this->invalidateWhitelistCache();
+        // A whitelist entry must take effect immediately, even when this IP
+        // already has a cached active block. The middleware checks the
+        // whitelist first, but stale blocked-cache state must not leak into
+        // other consumers of isBlocked(). For CIDR entries, clear every
+        // cached blocked IP cannot be derived safely, so use a cache version
+        // to invalidate the whole blocked namespace.
+        $this->invalidateAllBlockedCaches();
 
         $this->log('info', 'IP whitelisted', [
             'ip' => $ip,
@@ -1240,7 +1247,30 @@ class CrowdSecService
     {
         $prefix = $this->scenarios['cache']['prefix'] ?? 'crowdsec';
 
-        return "{$prefix}:blocked:{$ip}";
+        return "{$prefix}:blocked:" . $this->getBlockedCacheVersion() . ":{$ip}";
+    }
+
+    protected function getBlockedCacheVersion(): int
+    {
+        return (int) $this->cacheStore()->get($this->getBlockedCacheVersionKey(), 1);
+    }
+
+    protected function getBlockedCacheVersionKey(): string
+    {
+        $prefix = $this->scenarios['cache']['prefix'] ?? 'crowdsec';
+
+        return "{$prefix}:blocked:version";
+    }
+
+    /**
+     * Invalidate all cached blocked statuses. Used when a whitelist changes,
+     * because a CIDR whitelist can cover multiple already-cached IPs.
+     */
+    public function invalidateAllBlockedCaches(): void
+    {
+        if ($this->isCacheEnabled()) {
+            $this->cacheStore()->increment($this->getBlockedCacheVersionKey());
+        }
     }
 
     /**

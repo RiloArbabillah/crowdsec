@@ -152,6 +152,33 @@ class WhitelistManagementTest extends PackageTestCase
         $this->assertFalse($second->getData(true)['removed']);
     }
 
+    public function test_whitelisting_an_already_blocked_ip_bypasses_the_active_block(): void
+    {
+        config()->set('crowdsec-scenarios.cache.enabled', true);
+        \Illuminate\Support\Facades\Cache::flush();
+
+        $ip = '198.51.100.42';
+        \RiloArbabillah\LaravelCrowdSec\Models\BlockedIp::create([
+            'ip' => $ip,
+            'reason' => 'Detected threat',
+            'is_active' => true,
+            'expires_at' => now()->addHour(),
+        ]);
+
+        // Prime the blocked-status cache before the whitelist is added.
+        $this->assertTrue($this->service->isBlocked($ip));
+        $this->service->whitelistIp($ip, 'Trusted host');
+
+        $middleware = new \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecProtection($this->service);
+        $response = $middleware->handle(
+            Request::create('/test', 'GET', [], [], [], ['REMOTE_ADDR' => $ip]),
+            fn ($request) => new \Symfony\Component\HttpFoundation\Response('OK', 200),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($this->service->isWhitelisted($ip));
+    }
+
     public function test_is_whitelisted_returns_true_for_db_entry(): void
     {
         $this->service->whitelistIp('10.0.0.0/8', 'Test');

@@ -292,6 +292,8 @@ class CrowdSecProtection
             'Forbidden - Your IP has been blocked due to suspicious activity'
         );
 
-        return response($message, 403);
+        // Include the resolved client IP so the block response identifies the
+        // exact address that was denied.
+        return response($message . ' IP: ' . ($request->ip() ?? 'unknown'), 403);
     }
 }
