@@ -14,5 +14,5 @@ Route::prefix('api/crowdsec')
         Route::get('/check/{ip}', [CrowdSecApiController::class, 'check']);
         Route::get('/whitelist', [CrowdSecApiController::class, 'whitelist']);
         Route::post('/whitelist', [CrowdSecApiController::class, 'addWhitelist']);
-        Route::delete('/whitelist/{ip}', [CrowdSecApiController::class, 'removeWhitelist']);
+        Route::delete('/whitelist/{ip}', [CrowdSecApiController::class, 'removeWhitelist'])->where('ip', '.*');
     });
