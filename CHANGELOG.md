@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-11
+
 ### Fixed
 
 - **`ip_behaviors` deadlocks (MySQL 1213)** — `IpBehavior::withLock()` no longer runs its `INSERT IGNORE` inside the same transaction that takes `SELECT ... FOR UPDATE` on the row. The row is ensured *before* the locking transaction begins, so the insert-intention lock on the unique `ip` key is never held alongside a row lock. This removes the lock cycle that caused concurrent requests for the same IP to deadlock, which previously made the middleware fail open and silently skip protection
@@ -19,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fail-open observability** — every fail-open now increments the `crowdsec_middleware_failed` counter (surfaced as `crowdsec_middleware_failed_total` on the metrics endpoint), logs structured error/transaction context, and dispatches a new `CrowdSecMiddlewareFailed` event for alerting
 - **Migration `2026_09_11_000000_add_unique_index_to_blocked_ips_ip.php`** — adds a unique index on `blocked_ips.ip`, which the atomic block upsert requires. Existing deployments must run `php artisan migrate`
 - **Concurrency and regression tests** — real parallel-process concurrency coverage against MySQL/PostgreSQL, a regression test asserting the ensure-exists insert runs outside the locking transaction, single-lock tracking assertions, and fail-open observability tests
+
+### Upgrade Notes
+
+- Run `php artisan migrate` to apply the new `2026_09_11_000000_add_unique_index_to_blocked_ips_ip.php` migration, which adds the unique index on `blocked_ips.ip` required by the atomic block upsert. If a deployment already contains duplicate `blocked_ips` rows for the same IP, they must be reconciled before the unique index can be created
+- Public APIs are preserved (`trackBehavior`, `trackLoginAttempt`, `addThreatScoreFromThreats`, `withLock`). Existing counters and blocks continue to work; the change is transparent to callers
+- Add a monitoring alert on a rising `crowdsec_middleware_failed_total`. A non-zero value means the middleware failed open and protection was skipped at least once
 
 ## [1.4.0] - 2026-08-29
 
