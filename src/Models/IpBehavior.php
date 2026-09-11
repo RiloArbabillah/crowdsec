@@ -5,7 +5,9 @@ namespace RiloArbabillah\LaravelCrowdSec\Models;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use PDOException;
+use Throwable;
 
 /**
  * @property string $ip
@@ -23,6 +25,13 @@ use Illuminate\Support\Facades\DB;
 class IpBehavior extends Model
 {
     protected $table = 'ip_behaviors';
+
+    /**
+     * Number of attempts used when a deadlock/lock-wait is retried.
+     * Kept at one attempt for a mutation callback so firstOrCreate-style
+     * callbacks that perform inserts are not executed twice.
+     */
+    protected const DEADLOCK_RETRY_ATTEMPTS = 5;
 
     protected $fillable = [
         'ip',
@@ -70,6 +79,133 @@ class IpBehavior extends Model
     public function scopeActiveRecently(Builder $query, int $minutes = 60): Builder
     {
         return $query->where('last_activity', '>=', now()->subMinutes($minutes));
+    }
+
+    /**
+     * Read-only accessor: guarantees the row exists without holding a row lock.
+     * Used by the per-instance mutators so they never take an INSERT
+     * insert-intention lock inside the locking transaction.
+     */
+    public static function getOrCreate(string $ip): self
+    {
+        static::ensureExists($ip);
+
+        /** @var self|null $behavior */
+        $behavior = static::query()->where('ip', $ip)->first();
+
+        if ($behavior === null) {
+            // Defensive fallback: a concurrent cleanup may have removed the row.
+            static::ensureExists($ip);
+            $behavior = static::query()->where('ip', $ip)->first();
+        }
+
+        if ($behavior === null) {
+            throw new \RuntimeException("Unable to create ip_behaviors row for {$ip}");
+        }
+
+        return $behavior;
+    }
+
+    /**
+     * Make sure an ip_behaviors row exists for the given IP.
+     *
+     * This deliberately runs *outside* any locking transaction (autocommit) so
+     * the INSERT insert-intention lock is released before the row is locked
+     * with SELECT ... FOR UPDATE. Holding an insert-intention lock for a
+     * unique key while other sessions already hold row locks is what produced
+     * the 1213 deadlock cycle between concurrent requests for the same IP.
+     *
+     * Idempotent: uses INSERT IGNORE-equivalent semantics via `insertOrIgnore`.
+     */
+    public static function ensureExists(string $ip): void
+    {
+        $now = now();
+        $table = static::query()->getModel()->getTable();
+
+        \Illuminate\Support\Facades\DB::table($table)->insertOrIgnore([
+            'ip' => $ip,
+            'request_count' => 0,
+            'error_404_count' => 0,
+            'login_attempts' => 0,
+            'threat_score' => 0,
+            'block_count' => 0,
+            'first_activity' => $now,
+            'last_activity' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Serialize all state mutations for one IP across concurrent requests.
+     *
+     * The row is ensured *before* the locking transaction begins, so the
+     * transaction only ever takes a single row lock. Deadlocks (SQLSTATE
+     * 40001 / MySQL 1213) are retried with bounded backoff. A callback is
+     * finalized at most once per attempt, so mutation callbacks must be
+     * idempotent (they only read and persist a single row and are re-run
+     * against a freshly locked row).
+     *
+     * @template TResult
+     * @param  Closure(self): TResult  $callback
+     * @return TResult
+     */
+    public static function withLock(string $ip, Closure $callback, bool $retryOnDeadlock = true): mixed
+    {
+        static::ensureExists($ip);
+
+        $attempts = $retryOnDeadlock ? self::DEADLOCK_RETRY_ATTEMPTS : 1;
+
+        $run = function () use ($ip, $callback) {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($ip, $callback) {
+                /** @var self $behavior */
+                $behavior = static::query()->where('ip', $ip)->lockForUpdate()->firstOrFail();
+
+                return $callback($behavior);
+            });
+        };
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                return $run();
+            } catch (Throwable $e) {
+                if ($attempt >= $attempts || ! self::isRetryableLockError($e)) {
+                    throw $e;
+                }
+
+                $delay = self::deadlockBackoffMicroseconds($attempt);
+                Log::warning('CrowdSec: ip_behaviors lock contention, retrying', [
+                    'ip' => $ip,
+                    'attempt' => $attempt,
+                    'max_attempts' => $attempts,
+                    'backoff_ms' => round($delay / 1000, 2),
+                    'error' => $e->getMessage(),
+                ]);
+                usleep($delay);
+            }
+        }
+
+        throw new \RuntimeException('ip_behaviors lock retry exhausted unexpectedly');
+    }
+
+    /**
+     * Mutate an IP row inside a single lock acquisition and return the locked,
+     * mutated model. Prefer this over chaining multiple increment/add helpers so one request = one lock acquisition.
+     *
+     * @template TResult
+     * @param  Closure(self): TResult  $callback
+     * @return array{0: self, 1: TResult}
+     */
+    public static function mutateLocked(string $ip, Closure $callback): array
+    {
+        /** @var array{0: self, 1: mixed} $result */
+        $result = static::withLock($ip, function (self $behavior) use ($callback): array {
+            $value = $callback($behavior);
+
+            return [$behavior, $value];
+        });
+
+        return $result;
     }
 
     public function incrementRequestCount(): void
@@ -139,44 +275,6 @@ class IpBehavior extends Model
             }
             $behavior->save();
         });
-    }
-
-    public static function getOrCreate(string $ip): self
-    {
-        return static::withLock($ip, fn (self $behavior): self => $behavior);
-    }
-
-    /**
-     * Serialize all state mutations for one IP across concurrent requests.
-     *
-     * @template TResult
-     * @param  Closure(self): TResult  $callback
-     * @return TResult
-     */
-    public static function withLock(string $ip, Closure $callback): mixed
-    {
-        return DB::transaction(function () use ($ip, $callback) {
-            $now = now();
-
-            $table = static::query()->getModel()->getTable();
-            DB::table($table)->insertOrIgnore([
-                'ip' => $ip,
-                'request_count' => 0,
-                'error_404_count' => 0,
-                'login_attempts' => 0,
-                'threat_score' => 0,
-                'block_count' => 0,
-                'first_activity' => $now,
-                'last_activity' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-
-            /** @var self $behavior */
-            $behavior = static::query()->where('ip', $ip)->lockForUpdate()->firstOrFail();
-
-            return $callback($behavior);
-        }, 3);
     }
 
     public function isWindowActive(string $windowAttribute, int $windowMinutes): bool
@@ -265,7 +363,49 @@ class IpBehavior extends Model
         return $decayed;
     }
 
-    protected function incrementWindowCounter(string $counter, string $windowAttribute, int $windowMinutes): void
+    /**
+     * Determine whether an exception is a deadlock / serialization failure
+     * that is safe to retry (MySQL 1213, PostgreSQL 40P01 / SQLSTATE 40001).
+     */
+    public static function isRetryableLockError(Throwable $e): bool
+    {
+        $sqlState = null;
+        $driverCode = null;
+
+        $current = $e;
+
+        while ($current !== null) {
+            if ($current instanceof \Illuminate\Database\QueryException) {
+                $sqlState = $current->getCode();
+            }
+
+            if ($current instanceof PDOException && isset($current->errorInfo[1])) {
+                $driverCode = (int) $current->errorInfo[1];
+                $sqlState ??= (string) ($current->errorInfo[0] ?? '');
+            }
+
+            $current = $current->getPrevious();
+        }
+
+        if ($driverCode !== null && in_array($driverCode, [1213, 1205], true)) {
+            return true;
+        }
+
+        return in_array((string) $sqlState, ['40001', '40P01'], true);
+    }
+
+    /**
+     * Exponential backoff with jitter, in microseconds.
+     */
+    protected static function deadlockBackoffMicroseconds(int $attempt): int
+    {
+        $baseMs = min(200, 5 * (2 ** max(0, $attempt - 1)));
+        $jitterMs = random_int(0, 5);
+
+        return (int) (($baseMs + $jitterMs) * 1000);
+    }
+
+    public function incrementWindowCounter(string $counter, string $windowAttribute, int $windowMinutes): void
     {
         $now = now();
         $windowMinutes = max(1, $windowMinutes);
@@ -290,4 +430,5 @@ class IpBehavior extends Model
 
         $this->setRawAttributes($fresh->getAttributes(), true);
     }
+
 }
