@@ -324,6 +324,44 @@ class CrowdSecMiddlewareTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $behavior->request_count);
     }
 
+    public function test_middleware_tracks_a_request_in_a_single_transaction(): void
+    {
+        $ip = '203.0.113.95';
+        $transactions = 0;
+
+        \Illuminate\Support\Facades\DB::connection()
+            ->getEventDispatcher()
+            ->listen(\Illuminate\Database\Events\TransactionBeginning::class, function () use (&$transactions): void {
+                $transactions++;
+            });
+
+        // A login POST with a low-severity threat: previously this path took
+        // three separate withLock() acquisitions (login attempt, threat score,
+        // request count) for the same IP.
+        $request = Request::create(
+            '/login',
+            'POST',
+            ['email' => 'user@example.com', 'password' => 'secret'],
+            [],
+            [],
+            ['REMOTE_ADDR' => $ip],
+        );
+        $request->headers->set('User-Agent', 'Mozilla/5.0');
+
+        $this->middleware->handle($request, fn ($req) => new Response('OK', 200));
+
+        $this->assertLessThanOrEqual(
+            1,
+            $transactions,
+            'A single request must acquire the ip_behaviors lock at most once',
+        );
+
+        $behavior = IpBehavior::where('ip', $ip)->first();
+        $this->assertNotNull($behavior);
+        $this->assertGreaterThanOrEqual(1, $behavior->request_count);
+        $this->assertGreaterThanOrEqual(1, $behavior->login_attempts);
+    }
+
     public function test_404_tracking(): void
     {
         $ip = '203.0.113.91';

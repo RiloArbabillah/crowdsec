@@ -185,7 +185,7 @@ jobs:
           TEST_DB_DATABASE: crowdsec_testing
           TEST_DB_USERNAME: ${{ matrix.username }}
           TEST_DB_PASSWORD: ${{ matrix.password }}
-        run: vendor/bin/phpunit tests/Feature/DatabaseCompatibilityTest.php --colors=always
+        run: vendor/bin/phpunit tests/Feature/DatabaseCompatibilityTest.php tests/Feature/IpBehaviorLockingTest.php tests/Feature/IpBehaviorConcurrencyTest.php --colors=always
 
   benchmark:
     runs-on: ubuntu-latest
