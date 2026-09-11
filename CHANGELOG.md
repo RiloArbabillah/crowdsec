@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ip_behaviors` deadlocks (MySQL 1213)** — `IpBehavior::withLock()` no longer runs its `INSERT IGNORE` inside the same transaction that takes `SELECT ... FOR UPDATE` on the row. The row is ensured *before* the locking transaction begins, so the insert-intention lock on the unique `ip` key is never held alongside a row lock. This removes the lock cycle that caused concurrent requests for the same IP to deadlock, which previously made the middleware fail open and silently skip protection
+- **Consistent lock ordering** — block writes now always lock `ip_behaviors` before `blocked_ips`, and `blocked_ips` is written with an atomic upsert (`INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT`) instead of `updateOrCreate()`'s `SELECT + INSERT/UPDATE`, eliminating the gap lock that contributed to the deadlock
+
+### Added
+
+- **Single-acquisition request tracking** — `CrowdSecService::trackRequest()` and `IpBehavior::mutateLocked()` consolidate a request's request count, login attempt, and cumulative threat score into one `ip_behaviors` lock acquisition (previously two to three). The middleware now uses this on the request path
+- **Deadlock-aware retries** — `IpBehavior::isRetryableLockError()` classifies serialization failures (`SQLSTATE 40001`, MySQL `1213`/`1205`, PostgreSQL `40P01`); retries run up to five times with exponential backoff and jitter and never retry logic errors
+- **Fail-open observability** — every fail-open now increments the `crowdsec_middleware_failed` counter (surfaced as `crowdsec_middleware_failed_total` on the metrics endpoint), logs structured error/transaction context, and dispatches a new `CrowdSecMiddlewareFailed` event for alerting
+- **Migration `2026_09_11_000000_add_unique_index_to_blocked_ips_ip.php`** — adds a unique index on `blocked_ips.ip`, which the atomic block upsert requires. Existing deployments must run `php artisan migrate`
+- **Concurrency and regression tests** — real parallel-process concurrency coverage against MySQL/PostgreSQL, a regression test asserting the ensure-exists insert runs outside the locking transaction, single-lock tracking assertions, and fail-open observability tests
+
 ## [1.4.0] - 2026-08-29
 
 ### Added

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static list<array<string, mixed>> analyzeRequest(\Illuminate\Http\Request $request)
  * @method static list<array<string, mixed>> checkWafPatterns(\Illuminate\Http\Request $request)
  * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior trackBehavior(string $ip, string $path)
+ * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior trackRequest(string $ip, bool $loginAttempt = false, bool $loginAddsThreatScore = true, list<array<string, mixed>> $threats = [], array<string, mixed> $extraCounters = [])
  * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior track404(string $ip)
  * @method static \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior trackLoginAttempt(string $ip)
  * @method static void addThreatScoreFromThreats(string $ip, list<array<string, mixed>> $threats)

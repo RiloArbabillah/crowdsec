@@ -4,6 +4,7 @@ namespace RiloArbabillah\LaravelCrowdSec\Http\Controllers;
 
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\IpBehavior;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -75,6 +76,14 @@ class CrowdSecMetricsController extends Controller
         $lines[] = '# HELP crowdsec_events_this_hour Number of security events in the last hour';
         $lines[] = '# TYPE crowdsec_events_this_hour gauge';
         $lines[] = 'crowdsec_events_this_hour ' . SecurityEvent::where('created_at', '>=', now()->subHour())->count();
+
+        // -- middleware_failed (counter) --
+        // Incremented by CrowdSecProtection whenever the middleware errors and
+        // fails open. A non-zero value means protection was skipped.
+        $lines[] = '';
+        $lines[] = '# HELP crowdsec_middleware_failed_total Number of times the middleware failed open';
+        $lines[] = '# TYPE crowdsec_middleware_failed_total counter';
+        $lines[] = 'crowdsec_middleware_failed_total ' . (int) Cache::get('crowdsec:middleware_failed', 0);
 
         $lines[] = '';
 

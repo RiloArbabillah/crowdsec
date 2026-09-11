@@ -69,4 +69,54 @@ class DatabaseCompatibilityTest extends PackageTestCase
         $this->assertNotNull($behavior->error_404_window_started_at);
         $this->assertNotNull($behavior->login_window_started_at);
     }
+
+    /**
+     * The atomic blocked_ips upsert depends on a UNIQUE constraint on `ip`.
+     * Verify the migration created it and that repeated blocks refresh a
+     * single row on the real database engines.
+     */
+    public function test_blocked_ips_ip_unique_index_enables_atomic_upsert(): void
+    {
+        $this->assertTrue(
+            Schema::getIndexes('blocked_ips') !== [],
+            'blocked_ips should expose indexes for schema inspection',
+        );
+
+        $indexes = collect(Schema::getIndexes('blocked_ips'))
+            ->filter(fn (array $index): bool => ($index['unique'] ?? false) === true)
+            ->flatMap(fn (array $index): array => $index['columns'] ?? []);
+
+        $this->assertContains('ip', $indexes->all(), 'blocked_ips.ip must have a unique index');
+
+        $ip = '203.0.113.30';
+
+        $first = BlockedIp::upsertBlock($ip, 'First', now()->addMinutes(30), 'test');
+        $second = BlockedIp::upsertBlock($ip, 'Second', now()->addMinutes(60), 'test');
+
+        $this->assertSame($first->getKey(), $second->getKey());
+        $this->assertSame(1, BlockedIp::query()->where('ip', $ip)->count());
+        $this->assertSame('Second', $second->reason);
+    }
+
+    /**
+     * One consolidated tracking call must persist request count, login attempt,
+     * and threat score in a single transaction on a real engine.
+     */
+    public function test_track_request_consolidates_mutations(): void
+    {
+        $ip = '203.0.113.40';
+
+        $this->service->trackRequest($ip, true, true, [[
+            'type' => 'sql_injection',
+            'severity' => 'critical',
+            'weight' => 25,
+            'mode' => 'enforce',
+        ]]);
+
+        $behavior = IpBehavior::query()->where('ip', $ip)->firstOrFail();
+
+        $this->assertSame(1, $behavior->request_count);
+        $this->assertSame(1, $behavior->login_attempts);
+        $this->assertSame(35.0, (float) $behavior->threat_score);
+    }
 }

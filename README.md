@@ -34,7 +34,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 - Detection for 15 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, and XXE
 - Multi-layer URL and HTML entity decoding to detect encoded payloads
 - Temporary IP blocking with expiration and progressive escalation
-- Request-rate, 404, login-attempt, and threat-score behavior tracking
+- Request-rate, 404, login-attempt, and threat-score behavior tracking with per-IP row locking, single-acquisition request consolidation, and deadlock-resistant retries
 - Exact-IP and CIDR allowlisting with hybrid static-config + DB-backed runtime whitelist
 - Cached blocked-IP lookups for high-traffic applications
 - Security events with request correlation, route and response context, GeoIP/ASN data, pseudonymous user hashes, and parsed client information
@@ -358,6 +358,8 @@ Enable metrics with `CROWDSEC_METRICS_ENABLED=true`. The default path is `/crowd
 
 For monitoring systems that cannot authenticate through a Laravel session, configure a signed URL or a dedicated allowlist middleware. The doctor command rejects an enabled metrics endpoint that has neither `auth` nor `signed` protection.
 
+The endpoint exposes `crowdsec_threats_total`, `crowdsec_blocked_ips_active`, `crowdsec_blocked_ips_total`, `crowdsec_tracked_ips`, `crowdsec_high_threat_ips`, `crowdsec_threat_score_average`, `crowdsec_events_today`, `crowdsec_events_this_hour`, and `crowdsec_middleware_failed_total`. Alert on a rising `crowdsec_middleware_failed_total`: it counts times the middleware failed open and protection was skipped.
+
 ### Admin dashboard
 
 Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']`.
@@ -540,6 +542,33 @@ Do not register these fallback schedules when the package tasks already appear i
 Detection runs after URL decoding, double URL decoding, and HTML entity decoding. Default patterns and severities can be reviewed and adjusted in the published configuration.
 
 Because application traffic varies, test configuration changes against representative legitimate requests before deploying stricter patterns or thresholds.
+
+## Behavior Tracking and Concurrency
+
+Every protected request updates the acting IP's `ip_behaviors` row. Those updates are serialized per IP with a row lock so counters stay accurate under concurrent traffic.
+
+- The row is created with an idempotent `INSERT ... IGNORE` **before** the locking transaction begins. Holding an insert-intention lock for the unique `ip` key while other sessions already hold row locks is what produced MySQL error `1213` (deadlock) between concurrent requests for the same IP — so the insert is deliberately kept out of the locking transaction.
+- A single request writes all of its counters (request count, login attempt, cumulative threat score) in **one** lock acquisition via `CrowdSecService::trackRequest()`, instead of the two or three separate acquisitions older versions used.
+- Lock ordering is always `ip_behaviors` → `blocked_ips`. Blocking uses an atomic upsert (`INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT`) rather than `updateOrCreate()`, so no gap lock is held.
+- Deadlocks and serialization failures (`SQLSTATE 40001`, MySQL `1213`/`1205`, PostgreSQL `40P01`) are retried up to five times with exponential backoff and jitter. Logic errors are never retried.
+
+If a lock attempt still fails, the middleware **fails open** — the request is allowed so legitimate users are never locked out. Fail-open events are no longer silent: each one increments the `crowdsec_middleware_failed` counter (exposed as `crowdsec_middleware_failed_total` in the metrics endpoint), logs a structured entry with error/transaction context, and dispatches a `CrowdSecMiddlewareFailed` event you can hook for alerting.
+
+```php
+use RiloArbabillah\LaravelCrowdSec\Events\CrowdSecMiddlewareFailed;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+
+Event::listen(CrowdSecMiddlewareFailed::class, function (CrowdSecMiddlewareFailed $event) {
+    Log::critical('CrowdSec protection skipped', [
+        'ip' => $event->ip,
+        'path' => $event->path,
+        'error' => $event->exception->getMessage(),
+    ]);
+});
+```
+
+A non-zero `crowdsec_middleware_failed_total` means protection was skipped at least once — treat it as a monitoring signal, not noise.
 
 ## Database Tables
 
