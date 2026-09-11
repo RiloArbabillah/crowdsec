@@ -10,5 +10,6 @@ parameters:
     tmpDir: storage/phpstan
     bootstrapFiles:
         - stubs/slack-notification.stub
+        - stubs/phpstan-bootstrap.php
     stubFiles:
         - stubs/slack-notification.stub

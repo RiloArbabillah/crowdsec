@@ -63,14 +63,14 @@ class CrowdSecDashboardController extends Controller
             ->orderByDesc('count')
             ->get();
 
-        return view()->make('crowdsec::dashboard', compact(
-            'stats',
-            'recentEvents',
-            'blockedIps',
-            'topAttackers',
-            'threatBreakdown',
-            'topCountries',
-            'deviceBreakdown'
-        ));
+        return view('crowdsec::dashboard', [
+            'stats' => $stats,
+            'recentEvents' => $recentEvents,
+            'blockedIps' => $blockedIps,
+            'topAttackers' => $topAttackers,
+            'threatBreakdown' => $threatBreakdown,
+            'topCountries' => $topCountries,
+            'deviceBreakdown' => $deviceBreakdown,
+        ]);
     }
 }
