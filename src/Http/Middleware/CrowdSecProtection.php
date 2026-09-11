@@ -4,9 +4,11 @@ namespace RiloArbabillah\LaravelCrowdSec\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use RiloArbabillah\LaravelCrowdSec\Events\BehaviorThresholdExceeded;
+use RiloArbabillah\LaravelCrowdSec\Events\CrowdSecMiddlewareFailed;
 use RiloArbabillah\LaravelCrowdSec\Events\ThreatDetected;
 use RiloArbabillah\LaravelCrowdSec\Models\BlockedIp;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
@@ -51,10 +53,9 @@ class CrowdSecProtection
                 throw $e;
             }
 
-            Log::error('CrowdSec: Middleware error — request allowed through', [
-                'error' => $e->getMessage(),
-                'ip' => $request->ip(),
-                'path' => $request->path(),
+            $this->reportFailOpen($request, $e, [
+                'stage' => $downstreamInvoked ? 'post_downstream' : 'pre_downstream',
+                'downstream_invoked' => $downstreamInvoked,
             ]);
 
             if ($downstreamInvoked) {
@@ -106,7 +107,8 @@ class CrowdSecProtection
             return $this->blockedResponse($request, 'Request body too large');
         }
 
-        // 6. Track login attempts, but continue inspecting all non-secret inputs.
+        // 6. Detect login attempts. The counter itself is written later, in the
+        //    same single lock acquisition as the request/threat-score updates.
         $isLoginRequest = $this->isLoginRequest($request);
         if ($isLoginRequest) {
             if ($this->service->exceedsLoginThreshold($ip)) {
@@ -114,10 +116,6 @@ class CrowdSecProtection
 
                 return $this->blockedResponse($request, 'Too many login attempts');
             }
-
-            // Provisional request tracking is reset by Laravel's Authenticated event.
-            // Manual failed-login tracking keeps its existing threat-score behavior.
-            $this->service->trackLoginAttempt($ip, false);
         }
 
         // 7. Run WAF pattern detection
@@ -141,8 +139,6 @@ class CrowdSecProtection
             $severity = $this->service->getMaxSeverity(array_column($threats, 'severity'));
             ThreatDetected::dispatch($ip, $threats, $severity, $request->path(), $request->method(), $request);
 
-            // Add cumulative threat score from detected patterns
-            $this->service->addThreatScoreFromThreats($ip, $threats);
             $hasEnforcedThreats = collect($threats)->contains(
                 fn ($threat) => ($threat['mode'] ?? WafPolicy::MODE_ENFORCE) === WafPolicy::MODE_ENFORCE,
             );
@@ -170,8 +166,13 @@ class CrowdSecProtection
             // Low severity: logged + scored above, continue processing
         }
 
-        // 8. Track behavior
-        $this->service->trackBehavior($ip, $request->path());
+        // 8. Track behavior in a single lock acquisition: request count, the
+        //    login attempt counter for login routes, and the cumulative threat
+        //    score are all persisted together. `$loginAddsThreatScore=false`
+        //    preserves the provisional-login semantics: the login counter is
+        //    reset by Laravel's Authenticated event, and only manually tracked
+        //    failed logins add score.
+        $this->service->trackRequest($ip, $isLoginRequest, false, $threats);
 
         // 9. Check behavior thresholds (including cumulative threat score)
         if ($this->service->exceedsBehaviorThreshold($ip)) {
@@ -215,6 +216,40 @@ class CrowdSecProtection
         }
 
         return $response;
+    }
+
+    /**
+     * Record a fail-open occurrence: a counter metric (so it is visible in
+     * monitoring, not just logs), a structured log entry, and a
+     * CrowdSecMiddlewareFailed event so applications can hook alerting.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    protected function reportFailOpen(Request $request, \Throwable $e, array $context = []): void
+    {
+        $ip = $request->ip() ?? 'unknown';
+        $path = $request->path();
+
+        try {
+            Cache::increment('crowdsec:middleware_failed');
+        } catch (\Throwable) {
+            // Metrics must never make fail-open worse.
+        }
+
+        $context = array_merge([
+            'error' => $e->getMessage(),
+            'error_class' => $e::class,
+            'ip' => $ip,
+            'path' => $path,
+        ], $context);
+
+        Log::error('CrowdSec: Middleware error — request allowed through (fail-open)', $context);
+
+        try {
+            CrowdSecMiddlewareFailed::dispatch($ip, $path, $e, $context);
+        } catch (\Throwable) {
+            // Listener failures must not interfere with fail-open handling.
+        }
     }
 
     /** @param list<array<string, mixed>> $threats */

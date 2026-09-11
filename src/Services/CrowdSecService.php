@@ -857,10 +857,7 @@ class CrowdSecService
      */
     public function trackBehavior(string $ip, string $path): IpBehavior
     {
-        $behavior = IpBehavior::getOrCreate($ip);
-        $behavior->incrementRequestCount();
-
-        return $behavior;
+        return $this->trackRequest($ip);
     }
 
     /**
@@ -886,11 +883,118 @@ class CrowdSecService
     }
 
     /**
+     * Consolidate the mutations produced by a single request into ONE lock
+     * acquisition on ip_behaviors. Previously a single request performed two
+     * to three separate withLock() calls (login attempt, threat score, request
+     * count), which multiplied lock contention and helped trigger 1213
+     * deadlocks under concurrency.
+     *
+     * @param  array<int, array<string, mixed>>  $threats
+     * @param  array<string, mixed>  $extraCounters  Reserved for future counters
+     *                                               (e.g. error_404_count) keyed by column name.
+     */
+    public function trackRequest(
+        string $ip,
+        bool $loginAttempt = false,
+        bool $loginAddsThreatScore = true,
+        array $threats = [],
+        array $extraCounters = [],
+    ): IpBehavior {
+        if (! $loginAttempt && empty($threats) && empty($extraCounters)) {
+            $behavior = IpBehavior::getOrCreate($ip);
+            $behavior->incrementRequestCount();
+
+            return $behavior;
+        }
+
+        $totalWeight = $this->totalEnforcedThreatWeight($threats);
+
+        /** @var IpBehavior $behavior */
+        [$behavior] = IpBehavior::mutateLocked($ip, function (IpBehavior $behavior) use (
+            $loginAttempt,
+            $loginAddsThreatScore,
+            $totalWeight,
+            $extraCounters
+        ): void {
+            $now = now();
+            $behavior->setAttribute('last_activity', $now);
+
+            $behavior->incrementWindowCounter(
+                'request_count',
+                'request_window_started_at',
+                (int) ($this->scenarios['behavior']['request_window_minutes'] ?? 60),
+            );
+
+            if ($loginAttempt) {
+                $behavior->incrementWindowCounter(
+                    'login_attempts',
+                    'login_window_started_at',
+                    (int) ($this->scenarios['behavior']['login_window_minutes'] ?? 5),
+                );
+            }
+
+            foreach ($extraCounters as $counter => $increment) {
+                $increment = max(0, (int) $increment);
+                if ($increment === 0) {
+                    continue;
+                }
+
+                $column = (string) $counter;
+                $behavior->setAttribute($column, (int) $behavior->getAttribute($column) + $increment);
+            }
+
+            $scoreDelta = $totalWeight;
+            if ($loginAttempt && $loginAddsThreatScore) {
+                $scoreDelta += 10;
+            }
+
+            if ($scoreDelta > 0) {
+                $behavior->setAttribute(
+                    'threat_score',
+                    min(100, (float) $behavior->threat_score + $scoreDelta),
+                );
+            }
+
+            $behavior->save();
+        });
+
+        return $behavior;
+    }
+
+    /**
+     * Track the request count for an IP in one lock acquisition.
+     */
+    public function trackRequestCount(string $ip): IpBehavior
+    {
+        return $this->trackRequest($ip);
+    }
+
+    /**
      * Add threat score based on detected threats
      *
      * @param array<int, array<string, mixed>> $threats
      */
     public function addThreatScoreFromThreats(string $ip, array $threats): void
+    {
+        $totalWeight = $this->totalEnforcedThreatWeight($threats);
+
+        if ($totalWeight <= 0) {
+            return;
+        }
+
+        IpBehavior::withLock($ip, function (IpBehavior $behavior) use ($totalWeight): void {
+            $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + $totalWeight));
+            $behavior->setAttribute('last_activity', now());
+            $behavior->save();
+        });
+    }
+
+    /**
+     * Sum the weight of threats that are being enforced (scored).
+     *
+     * @param  array<int, array<string, mixed>>  $threats
+     */
+    protected function totalEnforcedThreatWeight(array $threats): float
     {
         $enforcedThreats = array_filter(
             $threats,
@@ -898,15 +1002,10 @@ class CrowdSecService
         );
 
         if (empty($enforcedThreats)) {
-            return;
+            return 0.0;
         }
 
-        $totalWeight = array_sum(array_column($enforcedThreats, 'weight'));
-        IpBehavior::withLock($ip, function (IpBehavior $behavior) use ($totalWeight): void {
-            $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + $totalWeight));
-            $behavior->setAttribute('last_activity', now());
-            $behavior->save();
-        });
+        return (float) array_sum(array_column($enforcedThreats, 'weight'));
     }
 
     /**
@@ -987,14 +1086,16 @@ class CrowdSecService
                 $behavior->setAttribute('last_activity', now());
                 $behavior->save();
 
-                $blockedIp = BlockedIp::updateOrCreate(
-                    ['ip' => $ip],
-                    [
-                        'reason' => $reason,
-                        'event_type' => $eventType,
-                        'expires_at' => now()->addMinutes($effectiveDuration),
-                        'is_active' => true,
-                    ]
+                // Atomic upsert (INSERT ... ON DUPLICATE KEY UPDATE) instead of
+                // updateOrCreate() (SELECT + INSERT/UPDATE). This acquires a
+                // single row lock without holding a gap lock, and runs strictly
+                // after the ip_behaviors lock to keep lock ordering consistent:
+                // ip_behaviors -> blocked_ips.
+                $blockedIp = BlockedIp::upsertBlock(
+                    $ip,
+                    $reason,
+                    now()->addMinutes($effectiveDuration),
+                    $eventType,
                 );
 
                 return [$blockedIp, $effectiveDuration, $previousBlockCount + 1];
