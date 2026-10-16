@@ -22,6 +22,11 @@ class CrowdSecServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Fill in package defaults for top-level keys missing from the app's
+        // config (unpublished, or published by an older version). Shallow:
+        // a published `waf` or `behavior` array replaces the package one.
+        $this->mergeConfigFrom(__DIR__.'/../config/crowdsec-scenarios.php', 'crowdsec-scenarios');
+
         // Register the main service
         $this->app->singleton('crowdsec', function ($app) {
             return new CrowdSecService($app->make(SecurityEventContextService::class));

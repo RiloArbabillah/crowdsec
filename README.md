@@ -80,7 +80,7 @@ Publishing is optional, but recommended before changing thresholds or enabling i
 php artisan vendor:publish --tag=crowdsec-config
 ```
 
-This creates `config/crowdsec-scenarios.php` in the host application.
+This creates `config/crowdsec-scenarios.php` in the host application. Top-level keys missing from the published file (for example a scenario added in a later release) fall back to the package defaults. The merge is shallow: a published `waf` or `behavior` array replaces the package one entirely.
 
 ### 4. Protect a route
 
