@@ -180,6 +180,22 @@ class FilamentLivewireCompatibilityTest extends PackageTestCase
         $this->assertSame(200, $response->getStatusCode());
     }
 
+    public function test_failed_auth_listener_fails_open_when_tracking_errors(): void
+    {
+        $this->app->instance('request', $this->livewireRequest($this->loginPayload([])));
+        $this->app->instance('crowdsec', new class extends CrowdSecService {
+            public function trackLoginAttempt(string $ip, bool $addThreatScore = true): IpBehavior
+            {
+                throw new \RuntimeException('database unavailable');
+            }
+        });
+
+        // Must not break the application's own login flow.
+        event(new Failed('web', null, ['email' => 'admin@example.com']));
+
+        $this->assertNull(IpBehavior::where('ip', self::IP)->value('login_attempts'));
+    }
+
     public function test_failed_auth_event_tracking_can_be_disabled(): void
     {
         Config::set('crowdsec-scenarios.behavior.track_failed_auth_event', false);

@@ -6,6 +6,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
@@ -114,26 +115,36 @@ class CrowdSecServiceProvider extends ServiceProvider
 
         // Count failed logins from any auth flow. Livewire/Filament logins never
         // hit a configured login route; path-matched routes are already counted
-        // by the middleware.
+        // by the middleware. Runs inside the app's Auth::attempt(), so it fails
+        // open like the middleware instead of breaking the login flow.
         Event::listen(Failed::class, function (Failed $event) {
             if (! config('crowdsec-scenarios.behavior.track_failed_auth_event', true)) {
                 return;
             }
 
             $request = request();
-            $service = app('crowdsec');
             $ip = $request->ip() ?? 'unknown';
 
-            if (! $service->isEnabled() || $service->isLoginRequest($request) || $service->isWhitelisted($ip)) {
-                return;
-            }
+            try {
+                $service = app('crowdsec');
 
-            $request->attributes->remove(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE);
-            $service->trackLoginAttempt($ip);
-            $request->attributes->set(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE, $ip);
+                if (! $service->isEnabled() || $service->isLoginRequest($request) || $service->isWhitelisted($ip)) {
+                    return;
+                }
 
-            if ($service->exceedsLoginThreshold($ip)) {
-                $service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
+                $request->attributes->remove(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE);
+                $service->trackLoginAttempt($ip);
+                $request->attributes->set(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE, $ip);
+
+                if ($service->exceedsLoginThreshold($ip)) {
+                    $service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
+                }
+            } catch (\Throwable $e) {
+                Log::error('CrowdSec: Failed to track failed login — login flow continues (fail-open)', [
+                    'error' => $e->getMessage(),
+                    'error_class' => $e::class,
+                    'ip' => $ip,
+                ]);
             }
         });
 
