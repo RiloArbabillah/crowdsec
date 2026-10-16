@@ -35,6 +35,12 @@ class CrowdSecService
     /**
      * Config keys that are NOT pattern-based scenarios.
      */
+    /** Request attribute holding the IP whose failed login the Failed listener already counted. */
+    public const FAILED_LOGIN_TRACKED_ATTRIBUTE = 'crowdsec.failed_login_tracked';
+
+    /** Used when a published config predates `waf.sensitive_body_fields`. */
+    protected const DEFAULT_SENSITIVE_BODY_FIELDS = ['password', 'password_confirmation', 'current_password'];
+
     public const NON_SCENARIO_KEYS = [
         'behavior', 'defaults', 'whitelist_ips', 'login_routes',
         'enabled', 'blocked_response_message', 'log_channel',
@@ -375,6 +381,7 @@ class CrowdSecService
         $excludedBodyFields = array_values(array_unique(array_merge(
             $excludedBodyFields,
             $exclusions['ignored_body_fields'],
+            array_map('strval', (array) ($wafConfig['sensitive_body_fields'] ?? self::DEFAULT_SENSITIVE_BODY_FIELDS)),
         )));
         $skippedScenarios = $exclusions['skipped_scenarios'];
 
@@ -758,6 +765,18 @@ class CrowdSecService
             }
         }
 
+        // Livewire sends component state as a JSON string; decode it so field
+        // exclusions apply to its keys too.
+        if ($request->hasHeader('X-Livewire') && is_array($data['components'] ?? null)) {
+            foreach ($data['components'] as $index => $component) {
+                $snapshot = is_array($component) ? ($component['snapshot'] ?? null) : null;
+                $decoded = is_string($snapshot) ? json_decode($snapshot, true) : null;
+                if (is_array($decoded)) {
+                    $data['components'][$index]['snapshot'] = $decoded;
+                }
+            }
+        }
+
         // Flatten the data for pattern matching
         if (! empty($data)) {
             $flatData = $this->flattenData($data, '', $flatData, 0, $excludedBodyFields);
@@ -793,7 +812,7 @@ class CrowdSecService
 
                 return $pattern !== '' && (str_contains($pattern, '.') || str_contains($pattern, '*')
                     ? Str::is($pattern, $normalizedPath)
-                    : $pattern === $normalizedKey);
+                    : $pattern === $normalizedKey || $pattern === Str::afterLast($normalizedKey, '.'));
             });
 
             if ($isExcluded) {
@@ -872,10 +891,39 @@ class CrowdSecService
     }
 
     /**
+     * Whether the request is a POST to one of the configured login routes.
+     */
+    public function isLoginRequest(Request $request): bool
+    {
+        if ($request->method() !== 'POST') {
+            return false;
+        }
+
+        $path = $request->path();
+
+        foreach (config('crowdsec-scenarios.login_routes', ['login']) as $route) {
+            if ($path === $route || fnmatch($route, $path)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Track login attempt for an IP
      */
     public function trackLoginAttempt(string $ip, bool $addThreatScore = true): IpBehavior
     {
+        // Apps that call this manually after a failed Auth::attempt() would
+        // otherwise count the failure twice (once by the Failed listener).
+        $request = app()->bound('request') ? request() : null;
+        if ($request !== null && $request->attributes->get(self::FAILED_LOGIN_TRACKED_ATTRIBUTE) === $ip) {
+            $request->attributes->remove(self::FAILED_LOGIN_TRACKED_ATTRIBUTE);
+
+            return IpBehavior::getOrCreate($ip);
+        }
+
         $behavior = IpBehavior::getOrCreate($ip);
         $behavior->incrementLoginAttempts($addThreatScore);
 
@@ -899,8 +947,9 @@ class CrowdSecService
         bool $loginAddsThreatScore = true,
         array $threats = [],
         array $extraCounters = [],
+        bool $countRequest = true,
     ): IpBehavior {
-        if (! $loginAttempt && empty($threats) && empty($extraCounters)) {
+        if ($countRequest && ! $loginAttempt && empty($threats) && empty($extraCounters)) {
             $behavior = IpBehavior::getOrCreate($ip);
             $behavior->incrementRequestCount();
 
@@ -914,16 +963,19 @@ class CrowdSecService
             $loginAttempt,
             $loginAddsThreatScore,
             $totalWeight,
-            $extraCounters
+            $extraCounters,
+            $countRequest
         ): void {
             $now = now();
             $behavior->setAttribute('last_activity', $now);
 
-            $behavior->incrementWindowCounter(
-                'request_count',
-                'request_window_started_at',
-                (int) ($this->scenarios['behavior']['request_window_minutes'] ?? 60),
-            );
+            if ($countRequest) {
+                $behavior->incrementWindowCounter(
+                    'request_count',
+                    'request_window_started_at',
+                    (int) ($this->scenarios['behavior']['request_window_minutes'] ?? 60),
+                );
+            }
 
             if ($loginAttempt) {
                 $behavior->incrementWindowCounter(
@@ -1009,11 +1061,12 @@ class CrowdSecService
     }
 
     /**
-     * Check if IP exceeds behavior thresholds
+     * Check if IP exceeds behavior thresholds. Pass a freshly tracked
+     * $behavior to skip the lookup query.
      */
-    public function exceedsBehaviorThreshold(string $ip): bool
+    public function exceedsBehaviorThreshold(string $ip, ?IpBehavior $behavior = null): bool
     {
-        $behavior = IpBehavior::where('ip', $ip)->first();
+        $behavior ??= IpBehavior::where('ip', $ip)->first();
 
         if (! $behavior) {
             return false;

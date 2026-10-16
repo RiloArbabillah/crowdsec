@@ -2,9 +2,11 @@
 
 namespace RiloArbabillah\LaravelCrowdSec;
 
-use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Auth\Events\Failed;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecStats;
@@ -21,6 +23,11 @@ class CrowdSecServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Fill in package defaults for top-level keys missing from the app's
+        // config (unpublished, or published by an older version). Shallow:
+        // a published `waf` or `behavior` array replaces the package one.
+        $this->mergeConfigFrom(__DIR__.'/../config/crowdsec-scenarios.php', 'crowdsec-scenarios');
+
         // Register the main service
         $this->app->singleton('crowdsec', function ($app) {
             return new CrowdSecService($app->make(SecurityEventContextService::class));
@@ -86,9 +93,11 @@ class CrowdSecServiceProvider extends ServiceProvider
         $router->aliasMiddleware('crowdsec.honeypot', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\HoneypotTrap::class);
         $router->aliasMiddleware('crowdsec.rate', \RiloArbabillah\LaravelCrowdSec\Http\Middleware\CrowdSecRateLimit::class);
 
-        // Reset the login window after successful authentication. Unblocking and
+        // Reset the login window after a successful login. Unblocking and
         // threat-score resets are secure opt-ins for backward compatibility.
-        Event::listen(Authenticated::class, function (Authenticated $event) {
+        // Login (not Authenticated) so this runs once per login, not on every
+        // request that restores a session user.
+        Event::listen(Login::class, function (Login $event) {
             $ip = request()->ip() ?? 'unknown';
             $service = app('crowdsec');
 
@@ -101,6 +110,41 @@ class CrowdSecServiceProvider extends ServiceProvider
                 $behavior->resetAuthenticationState(
                     (bool) config('crowdsec-scenarios.behavior.reset_threat_score_on_authentication', false),
                 );
+            }
+        });
+
+        // Count failed logins from any auth flow. Livewire/Filament logins never
+        // hit a configured login route; path-matched routes are already counted
+        // by the middleware. Runs inside the app's Auth::attempt(), so it fails
+        // open like the middleware instead of breaking the login flow.
+        Event::listen(Failed::class, function (Failed $event) {
+            if (! config('crowdsec-scenarios.behavior.track_failed_auth_event', true)) {
+                return;
+            }
+
+            $request = request();
+            $ip = $request->ip() ?? 'unknown';
+
+            try {
+                $service = app('crowdsec');
+
+                if (! $service->isEnabled() || $service->isLoginRequest($request) || $service->isWhitelisted($ip)) {
+                    return;
+                }
+
+                $request->attributes->remove(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE);
+                $service->trackLoginAttempt($ip);
+                $request->attributes->set(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE, $ip);
+
+                if ($service->exceedsLoginThreshold($ip)) {
+                    $service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
+                }
+            } catch (\Throwable $e) {
+                Log::error('CrowdSec: Failed to track failed login — login flow continues (fail-open)', [
+                    'error' => $e->getMessage(),
+                    'error_class' => $e::class,
+                    'ip' => $ip,
+                ]);
             }
         });
 

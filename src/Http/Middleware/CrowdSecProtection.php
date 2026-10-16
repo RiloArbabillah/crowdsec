@@ -89,9 +89,9 @@ class CrowdSecProtection
 
         // 3. Block suspicious HTTP methods (TRACE, CONNECT, etc.)
         if ($this->service->isBlockedMethod($request)) {
-            $this->service->blockIp($ip, 'Blocked HTTP method: ' . $request->method(), 720, 'blocked_method');
+            $blockedIp = $this->service->blockIp($ip, 'Blocked HTTP method: ' . $request->method(), 720, 'blocked_method');
 
-            return $this->blockedResponse($request, 'HTTP method not allowed');
+            return $this->blockedResponse($request, 'HTTP method not allowed', $blockedIp);
         }
 
         // 4. Check for empty User-Agent (bot indicator)
@@ -112,9 +112,9 @@ class CrowdSecProtection
         $isLoginRequest = $this->isLoginRequest($request);
         if ($isLoginRequest) {
             if ($this->service->exceedsLoginThreshold($ip)) {
-                $this->service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
+                $blockedIp = $this->service->blockIp($ip, 'Too many login attempts', 15, 'login_threshold');
 
-                return $this->blockedResponse($request, 'Too many login attempts');
+                return $this->blockedResponse($request, 'Too many login attempts', $blockedIp);
             }
         }
 
@@ -151,7 +151,7 @@ class CrowdSecProtection
                 $reason = collect($blockingThreats)->pluck('type')->unique()->implode(', ');
                 $firstType = $blockingThreats[array_key_first($blockingThreats)]['type'] ?? 'security_threat';
                 $blockedIp = $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
-                $response = $this->blockedResponse($request, 'Malicious pattern detected');
+                $response = $this->blockedResponse($request, 'Malicious pattern detected', $blockedIp);
                 $this->finalizeEventSafely(
                     $securityEvent,
                     $response,
@@ -170,14 +170,22 @@ class CrowdSecProtection
         //    login attempt counter for login routes, and the cumulative threat
         //    score are all persisted together. `$loginAddsThreatScore=false`
         //    preserves the provisional-login semantics: the login counter is
-        //    reset by Laravel's Authenticated event, and only manually tracked
-        //    failed logins add score.
-        $this->service->trackRequest($ip, $isLoginRequest, false, $threats);
+        //    reset by Laravel's Login event, and only manually tracked
+        //    failed logins add score. Authenticated users can be excluded from
+        //    the request count (Filament/Livewire polling).
+        $countRequest = ! (
+            config('crowdsec-scenarios.behavior.skip_authenticated_request_count', true)
+            && $this->isAuthenticated($request)
+        );
+        $behavior = null;
+        if ($countRequest || $isLoginRequest || ! empty($threats)) {
+            $behavior = $this->service->trackRequest($ip, $isLoginRequest, false, $threats, [], $countRequest);
+        }
 
         // 9. Check behavior thresholds (including cumulative threat score)
-        if ($this->service->exceedsBehaviorThreshold($ip)) {
+        if ($this->service->exceedsBehaviorThreshold($ip, $behavior)) {
             // Dispatch BehaviorThresholdExceeded event
-            $behavior = \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior::where('ip', $ip)->first();
+            $behavior ??= \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior::where('ip', $ip)->first();
             if ($behavior) {
                 BehaviorThresholdExceeded::dispatch(
                     $ip,
@@ -189,7 +197,7 @@ class CrowdSecProtection
             }
 
             $blockedIp = $this->service->blockIp($ip, 'Suspicious behavior detected', 240, 'behavior_threshold');
-            $response = $this->blockedResponse($request, 'Rate limit exceeded');
+            $response = $this->blockedResponse($request, 'Rate limit exceeded', $blockedIp);
             $this->finalizeEventSafely(
                 $securityEvent,
                 $response,
@@ -301,34 +309,45 @@ class CrowdSecProtection
      */
     protected function isLoginRequest(Request $request): bool
     {
-        if ($request->method() !== 'POST') {
+        return $this->service->isLoginRequest($request);
+    }
+
+    /**
+     * Resolve the user defensively: a misconfigured guard must not turn every
+     * request into a fail-open.
+     */
+    protected function isAuthenticated(Request $request): bool
+    {
+        try {
+            return $request->user() !== null;
+        } catch (\Throwable) {
             return false;
         }
-
-        $loginRoutes = config('crowdsec-scenarios.login_routes', ['login']);
-        $path = $request->path();
-
-        foreach ($loginRoutes as $route) {
-            if ($path === $route || fnmatch($route, $path)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
      * Generate blocked response
      */
-    protected function blockedResponse(Request $request, string $reason): Response
+    protected function blockedResponse(Request $request, string $reason, ?BlockedIp $blockedIp = null): Response
     {
         $message = config(
             'crowdsec-scenarios.blocked_response_message',
             'Forbidden - Your IP has been blocked due to suspicious activity'
         );
+        $ip = $request->ip() ?? 'unknown';
+
+        $headers = [];
+        if ($blockedIp?->expires_at !== null) {
+            $headers['Retry-After'] = (string) max(1, $blockedIp->expires_at->getTimestamp() - now()->getTimestamp());
+        }
+
+        // Livewire (Filament) and API clients get JSON.
+        if ($request->expectsJson() || $request->hasHeader('X-Livewire')) {
+            return response()->json(['message' => $message, 'ip' => $ip], 403, $headers);
+        }
 
         // Include the resolved client IP so the block response identifies the
         // exact address that was denied.
-        return response($message . ' IP: ' . ($request->ip() ?? 'unknown'), 403);
+        return response($message . ' IP: ' . $ip, 403, $headers);
     }
 }

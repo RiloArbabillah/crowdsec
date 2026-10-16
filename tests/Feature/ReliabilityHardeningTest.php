@@ -2,7 +2,7 @@
 
 namespace RiloArbabillah\LaravelCrowdSec\Tests\Feature;
 
-use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -188,7 +188,7 @@ class ReliabilityHardeningTest extends TestCase
 
         $request = Request::create('/login', 'POST', [], [], [], ['REMOTE_ADDR' => $ip]);
         $this->app->instance('request', $request);
-        event(new Authenticated('web', new GenericUser(['id' => 123])));
+        event(new Login('web', new GenericUser(['id' => 123]), false));
 
         $behavior->refresh();
         $this->assertSame(0, $behavior->login_attempts);

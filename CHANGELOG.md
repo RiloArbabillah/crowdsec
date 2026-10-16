@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Label-driven releases** — the new `Auto Release` workflow releases a merged pull request labelled `release:patch`, `release:minor`, or `release:major` once `Tests` pass on its merge commit: it bumps the version, dates the CHANGELOG section, updates the README, runs the quality gates, and publishes the tag and GitHub Release. `tools/prepare-release.php` does the metadata step locally. The manual `Release` workflow is unchanged
 
+### Fixed
+
+- **WAF detected nothing without a published config** — the service provider never merged the package config, so apps that skipped `vendor:publish` ran with no scenarios or patterns. The provider now calls `mergeConfigFrom()`; published configs also gain top-level keys added in later releases (shallow merge)
+- **Filament/Livewire login brute force was not detected** — Livewire logins post to `livewire/update`, which never matched `login_routes`. Failed attempts are now counted from Laravel's `Failed` auth event (`behavior.track_failed_auth_event`, default `true`) and the IP is blocked at `login_threshold`. Path-matched login routes are not double counted, and a manual `trackLoginAttempt()` call for the same IP later in the same request is skipped
+- **Passwords triggered WAF blocks** — password fields were only excluded on login routes, so a password such as `a' OR 1=1--` on a Livewire login or a "change password" form blocked the user's IP and was stored in the security event. Fields in the new `waf.sensitive_body_fields` (falling back to the password fields when a published config lacks the key) are excluded on every route, matched by key name including the last segment of dotted keys (`data.password`). Livewire component snapshots are JSON-decoded so the exclusion applies inside them
+- **Active admins could hit `request_threshold`** — Filament polling and live fields count toward 500 requests/hour. Authenticated requests are no longer counted (`behavior.skip_authenticated_request_count`, default `true`); WAF and threat scoring still apply
+- **Login window reset ran on every authenticated request** — the reset listener now uses Laravel's `Login` event instead of `Authenticated`, removing an `ip_behaviors` query from every request with a session user
+
+### Changed
+
+- Livewire (`X-Livewire`) and JSON requests receive a JSON `403` body (`message`, `ip`). New blocks include a `Retry-After` header
+- The middleware reuses the behavior row returned by `trackRequest()` for the threshold check, saving one query per request. `exceedsBehaviorThreshold()` accepts an optional `IpBehavior`
+- `CrowdSecService::isLoginRequest()` is now public; `trackRequest()` accepts a `$countRequest` flag
+
+### Upgrade Notes
+
+- Manual `CrowdSec::trackLoginAttempt()` calls after a failed `Auth::attempt()` keep working and are no longer needed; they can be removed
+- Code that listened for the package resetting login attempts on `Authenticated` now gets the reset on `Login` only
+- For Filament, register the middleware with `appendToGroup('web', ...)` so authenticated users are resolved (see README, "Filament and Livewire")
+
 ## [1.5.0] - 2026-09-11
 
 ### Fixed

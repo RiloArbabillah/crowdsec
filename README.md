@@ -80,7 +80,7 @@ Publishing is optional, but recommended before changing thresholds or enabling i
 php artisan vendor:publish --tag=crowdsec-config
 ```
 
-This creates `config/crowdsec-scenarios.php` in the host application.
+This creates `config/crowdsec-scenarios.php` in the host application. Top-level keys missing from the published file (for example a scenario added in a later release) fall back to the package defaults. The merge is shallow: a published `waf` or `behavior` array replaces the package one entirely.
 
 ### 4. Protect a route
 
@@ -149,6 +149,23 @@ protected $middleware = [
 ];
 ```
 
+### Filament and Livewire
+
+Filament pages, forms, tables, polling, and the login screen all talk to the server through `POST /livewire/update`. Append the middleware to the `web` group so it covers both panel pages and Livewire requests, and runs after the session starts:
+
+```php
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->appendToGroup('web', CrowdSecProtection::class);
+})
+```
+
+What the package does for Livewire requests:
+
+- **Login brute force** — Livewire logins never hit a `login_routes` path, so failed attempts are counted from Laravel's `Illuminate\Auth\Events\Failed` event (`behavior.track_failed_auth_event`, default `true`). The IP is blocked once `login_threshold` is reached.
+- **Password fields** — keys listed in `waf.sensitive_body_fields` are never inspected or logged on any route, including Livewire's dotted keys (`data.password`) and the decoded component snapshot. When a published config predates this key, `password`, `password_confirmation`, and `current_password` are used.
+- **Request threshold** — requests from authenticated users are not counted toward `request_threshold` (`behavior.skip_authenticated_request_count`, default `true`), so polling and `->live()` fields don't block active admins. WAF inspection and threat scoring still apply. This needs the middleware to run after `StartSession`; as global middleware the user is not resolved yet and every request is counted.
+- **Blocked response** — Livewire and JSON requests receive a JSON `403` body (`message`, `ip`) instead of plain text. New blocks include a `Retry-After` header.
+
 ## Programmatic Usage
 
 The `CrowdSec` facade provides access to the protection service.
@@ -189,9 +206,9 @@ public function login(Request $request)
 }
 ```
 
-Use manual `trackLoginAttempt()` calls only when the route is not already listed in `login_routes`; combining both mechanisms counts the same failed request twice. Automatic middleware tracking records a provisional attempt without threat score, allows the configured number of requests, and blocks the following request when the counter was not reset by successful authentication.
+Manual `trackLoginAttempt()` calls are only needed when the login flow doesn't fire Laravel's `Failed` event. `Auth::attempt()` fires `Failed`, which is counted automatically while `behavior.track_failed_auth_event` is enabled; an existing manual call right after it in the same request is skipped, so the example above still counts each failure once. Path-matched `login_routes` are never double counted either. Automatic middleware tracking records a provisional attempt without threat score, allows the configured number of requests, and blocks the following request when the counter was not reset by successful authentication.
 
-Successful Laravel authentication resets only the IP's login-attempt counter and login window. Existing threat scores and active blocks are preserved by default. Automatic threat-score reset and unblocking are explicit configuration opt-ins.
+A successful login (Laravel's `Login` event) resets only the IP's login-attempt counter and login window. Existing threat scores and active blocks are preserved by default. Automatic threat-score reset and unblocking are explicit configuration opt-ins.
 
 ### Analyze a request
 
