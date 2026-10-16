@@ -1,0 +1,125 @@
+name: Auto Release
+
+# Releases a merged PR labelled release:patch, release:minor, or release:major
+# once Tests pass on its merge commit. The manual Release workflow remains
+# available as a fallback.
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      bump: ${{ steps.pr.outputs.bump }}
+      title: ${{ steps.pr.outputs.title }}
+
+    steps:
+      - name: Find release label on the merged PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pulls="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '[.[] | select(.merged_at != null)]')"
+          labels="$(jq -r '[.[].labels[].name] | join(" ")' <<< "$pulls")"
+          title="$(jq -r '.[0].title // ""' <<< "$pulls" | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//')"
+
+          # Highest label wins.
+          bump=""
+          for level in patch minor major; do
+            case " $labels " in *" release:$level "*) bump="$level" ;; esac
+          done
+
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "Release bump: ${bump:-none}"
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.bump != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Ensure master has not moved
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$(git rev-parse origin/master)" != "$SHA" ]; then
+            echo "::error::master moved past $SHA; release it with the manual Release workflow."
+            exit 1
+          fi
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare release metadata
+        id: version
+        env:
+          BUMP: ${{ needs.detect.outputs.bump }}
+        run: |
+          latest="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+          version="$(php tools/prepare-release.php "$BUMP" "$latest")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version (previous $latest)"
+          php tools/validate-release.php "$version" /tmp/crowdsec-release-notes.md
+
+      - name: Ensure tag and release do not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ! git show-ref --verify --quiet "refs/tags/$VERSION"
+          ! gh release view "$VERSION"
+
+      - name: Run release quality gates
+        run: |
+          composer validate --strict
+          composer audit
+          composer analyse
+          composer test
+
+      - name: Commit, tag, and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PR_TITLE: ${{ needs.detect.outputs.title }}
+        run: |
+          title="$VERSION"
+          if [ -n "$PR_TITLE" ]; then
+            title="$VERSION — $PR_TITLE"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "docs: prepare $VERSION release"
+          git push origin HEAD:master
+          git tag -a "$VERSION" -m "$title"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --verify-tag --latest --title "$title" --notes-file /tmp/crowdsec-release-notes.md
