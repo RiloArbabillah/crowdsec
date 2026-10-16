@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-16
+
 ### Added
 
 - **Label-driven releases** — the new `Auto Release` workflow releases a merged pull request labelled `release:patch`, `release:minor`, or `release:major` once `Tests` pass on its merge commit: it bumps the version, dates the CHANGELOG section, updates the README, runs the quality gates, and publishes the tag and GitHub Release. `tools/prepare-release.php` does the metadata step locally. The manual `Release` workflow is unchanged
