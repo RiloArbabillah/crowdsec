@@ -46,6 +46,10 @@ return [
             //     'ignore_body_fields' => ['payload.signature'],
             // ],
         ],
+        // Body fields never inspected (or logged) on any route. Matched by key
+        // name, including the last segment of dotted keys such as Livewire's
+        // `data.password`. Free-form secrets cause false positives otherwise.
+        'sensitive_body_fields' => ['password', 'password_confirmation', 'current_password'],
     ],
 
     // =========================================================================
@@ -420,6 +424,13 @@ return [
         'login_threshold' => 5, // login attempts per 5 minutes
         'login_window_minutes' => 5,
         'login_ignored_fields' => ['password', 'password_confirmation', 'current_password'],
+        // Count failed logins from Laravel's Auth Failed event. Required for
+        // Livewire/Filament logins, which never POST to a login route.
+        'track_failed_auth_event' => true,
+        // Don't count requests from authenticated users toward request_threshold
+        // (Filament polling and live fields generate many requests per minute).
+        // Needs the middleware to run after the session is started.
+        'skip_authenticated_request_count' => true,
         'unblock_on_authentication' => false,
         'reset_threat_score_on_authentication' => false,
         'threat_score_threshold' => 50,
