@@ -37,6 +37,7 @@ jobs:
           pulls="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '[.[] | select(.merged_at != null)]')"
           labels="$(jq -r '[.[].labels[].name] | join(" ")' <<< "$pulls")"
           title="$(jq -r '.[0].title // ""' <<< "$pulls" | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//')"
+          title="$(awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }' <<< "$title")"
 
           # Highest label wins.
           bump=""
