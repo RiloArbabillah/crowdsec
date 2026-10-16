@@ -622,7 +622,9 @@ The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel
 
 The versioned WAF accuracy corpus covers all 15 built-in attack categories plus representative legitimate requests. A zero-failure corpus run guards known false positives, but it is not a statistical claim about production traffic.
 
-Stable releases use the manual `Release` workflow. It requires matching README and CHANGELOG metadata, a successful `Tests` run on the current `master` commit, and passing release quality gates before it creates an annotated tag and GitHub Release.
+Stable releases are cut by the `Auto Release` workflow. Label a pull request `release:patch`, `release:minor`, or `release:major`; after it is merged and `Tests` pass on the merge commit, the workflow bumps the latest tag, turns the CHANGELOG `[Unreleased]` section into the dated release, updates the README version, runs the release quality gates, commits `docs: prepare vX.Y.Z release` to `master`, and creates the annotated tag and GitHub Release titled `vX.Y.Z — <PR title>`. Pull requests without a release label are not released, and the run stops if `master` moved past the merge commit.
+
+The manual `Release` workflow remains as a fallback. It requires matching README and CHANGELOG metadata, a successful `Tests` run on the current `master` commit, and passing release quality gates before it creates an annotated tag and GitHub Release. To prepare the metadata locally, run `php tools/prepare-release.php <patch|minor|major> <latest-tag>`.
 
 Laravel 10 remains package-compatible, but it is end-of-life. Compatibility does not imply active framework security support; production applications should use a Laravel version that still receives security updates.
 
