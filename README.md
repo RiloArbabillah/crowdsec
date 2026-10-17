@@ -49,7 +49,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 ## Requirements
 
 - PHP `^8.1`
-- Laravel `^10.0`, `^11.0`, or `^12.0`
+- Laravel `^10.0`, `^11.0`, `^12.0`, or `^13.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
 The latest stable package release is `v1.6.0`.
@@ -678,7 +678,7 @@ composer benchmark
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, validates SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 6 across all package source and route files.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, 12, and 13 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.5 where supported plus one `--prefer-lowest` job, runs the full suite on SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 8 across all package source and route files (existing findings are tracked in `phpstan-baseline.neon`).
 
 The versioned WAF accuracy corpus covers all 15 built-in attack categories plus representative legitimate requests. A zero-failure corpus run guards known false positives, but it is not a statistical claim about production traffic.
 
