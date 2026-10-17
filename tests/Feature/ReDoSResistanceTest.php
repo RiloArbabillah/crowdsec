@@ -58,10 +58,22 @@ class ReDoSResistanceTest extends TestCase
         $this->assertFalse($this->service->safeMatch('/hello/i', 'goodbye world'));
     }
 
-    public function test_safe_match_truncates_long_input(): void
+    public function test_safe_match_finds_payload_past_first_8kb(): void
     {
-        // Create a 20KB string with a match at position 10KB (should be truncated to 8KB)
+        // Padding past the first 8KB must not hide a payload
         $input = str_repeat('a', 10000) . 'MATCH' . str_repeat('b', 10000);
+        $this->assertTrue($this->service->safeMatch('/MATCH/', $input));
+    }
+
+    public function test_safe_match_finds_payload_on_chunk_boundary(): void
+    {
+        $input = str_repeat('a', 8190) . 'MATCH' . str_repeat('b', 100);
+        $this->assertTrue($this->service->safeMatch('/MATCH/', $input));
+    }
+
+    public function test_safe_match_stops_after_64kb(): void
+    {
+        $input = str_repeat('a', 70000) . 'MATCH';
         $this->assertFalse($this->service->safeMatch('/MATCH/', $input));
     }
 

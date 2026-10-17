@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **JNDI / Log4Shell detection** — new `jndi_injection` scenario (critical) checks every input, including request headers and the User-Agent, for `${jndi:…}` and obfuscated lookups. It is a new top-level config key, so published configs pick it up automatically
+- **Header inspection** — request headers other than the User-Agent, Referer, cookies, Authorization, and standard content headers are inspected by the `header_injection` and `jndi_injection` scenarios
+- **Migration `2026_10_17_000000_optimize_crowdsec_indexes.php`** — adds `security_events (event_type, severity)` for the metrics endpoint's grouping and drops two redundant indexes (`security_events.event_type`, covered by the new composite, and `blocked_ips.ip`, covered by the unique index)
+- **`crowdsec:block {ip}` and `crowdsec:unblock {ip}` commands** — manual blocks with `--reason` and `--duration`
+- **Configurable retention** — new `retention` config (`events_days`, `behavior_days`, `blocked_ips_days`, `block_count_reset_days`, all default 30, with `CROWDSEC_*_RETENTION_DAYS` / `CROWDSEC_BLOCK_COUNT_RESET_DAYS` variables). It is a new top-level key, so published configs pick it up automatically
+- **`crowdsec:export --ip` and `--event-type` filters**
+- **Laravel 13 support** — `illuminate/*` `^13.0` and Testbench `^11.0`; CI covers Laravel 13 on PHP 8.3–8.5, Laravel 12 on PHP 8.5, and a `--prefer-lowest` job (PHP 8.1, Laravel 10)
+- **Migration `2026_10_17_000001_widen_whitelisted_ips_expires_at.php`** — MySQL/MariaDB only (no-op elsewhere)
+
 ### Security
 
 - **Dashboard and API were open to every logged-in user** — any authenticated user could block, unblock, or whitelist IPs and read raw security events. The dashboard and read endpoints now require the `viewCrowdSec` gate and write endpoints `manageCrowdSec`. The package defines both to allow access only in the `local` environment; applications grant access by defining them
@@ -21,17 +32,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`HoneypotTrap` blocked whitelisted IPs and could break requests** — it now skips whitelisted IPs and fails open (counter, log, `CrowdSecMiddlewareFailed` event) when blocking fails
 - **Dashboard whitelist panel used a hardcoded API path** — it now uses the named `crowdsec.api.whitelist` route
 - **Invalid API filters caused server errors** — `events` validates `severity`, `ip`, and `from`; `blocked` validates `ip`; `{ip}` route parameters are constrained
+- **WAF evasions** — payloads now also match after `%uXXXX` decoding, a third URL-decoding layer, HTML entity decoding of URL-decoded input, NUL-byte removal, SQL inline-comment removal (`UNION/**/SELECT`), and NFKC normalization of fullwidth characters (with `intl`)
+- **Padding past 8 KB hid payloads** — `safeMatch()` truncated input to 8 KB; it now scans overlapping 8 KB chunks up to 64 KB
+- **Deeply nested bodies were not inspected** — fields nested deeper than 10 levels were dropped. Flattening now goes 32 levels deep and inspects anything deeper as one JSON string
+- **Chunked requests skipped the size check** — `isOversizedRequest()` measures the body when there is no `Content-Length` header
+- **Scenario `block_duration` was ignored** — WAF blocks used a duration guessed from the reason text. They now use the longest `block_duration` among the blocking threats' scenarios (new `CrowdSecService::blockDurationForThreats()`), falling back to the severity defaults
+- **Admin JWTs were blocked** — `jwt_privilege_escalation` (any token with `role=admin` and similar) defaulted to `enforce`, blocking legitimate admins using bearer tokens. It now defaults to `monitor`; `jwt_payload_*` threats follow their base scenario's mode and exclusions
+- **The first blocked-cache invalidation did nothing** — `invalidateAllBlockedCaches()` incremented a missing version key to `1`, the implicit current version, so cached blocks survived the first whitelist change. The key is seeded before it is incremented
+- **`blocked_ips` grew forever** — expired and unblocked rows were only flagged inactive. `crowdsec:cleanup --expired` now deletes inactive rows older than `retention.blocked_ips_days`
+- **Block escalation never decayed for busy IPs** — `block_count` was only cleared when an IP's behavior row was deleted after 30 days of inactivity, so shared/NAT IPs stayed at the 7-day cap. `--old-behaviors` resets it for IPs not blocked within `retention.block_count_reset_days`
+- **`crowdsec:export` loaded every event into memory and accepted bad options** — it now streams in batches, fails on an unknown `--format`/`--severity`, an invalid `--from`/`--to`, or an unwritable `--output` (previously an unknown format silently produced JSON and write errors were ignored). A date-time `--from`/`--to` is used as given; a plain date still covers the whole day
+- **Whitelist entries expiring after 2038 failed on MySQL** — `whitelisted_ips.expires_at` was a MySQL `TIMESTAMP`, which ends at 2038-01-19, so `crowdsec:whitelist add --expires=2099-12-31` raised a database error. The column is now `DATETIME` on MySQL/MariaDB
 
 ### Changed
 
 - API routes are named `crowdsec.api.*`
 - `GET /api/crowdsec/check/{ip}` returns only behavior counters (`request_count`, `error_404_count`, `login_attempts`, `threat_score`, `block_count`, `last_activity`) instead of the full row
+- **Fewer queries per request** — a clean request takes one `ip_behaviors` lock (5 queries instead of 7 on SQLite); the empty User-Agent score is written in the same lock as the request count instead of two extra locks, and `track404()` takes one lock instead of two. `trackRequest()` accepts an `$additionalThreatScore` argument
+- **PCRE limits are set once per WAF pass** — `checkWafPatterns()` lowers `pcre.backtrack_limit`/`pcre.recursion_limit` once and restores them afterwards, instead of four `ini_set()` calls per pattern match
+- `crowdsec:cleanup` deletes in batches of 1,000 rows instead of one large `DELETE`
+- Scheduled cleanup tasks run with `withoutOverlapping()` and `onOneServer()`
+- The metrics endpoint caches its output for `metrics.cache_seconds` (default 15; `0` disables)
+- CI runs the full test suite on MySQL 8.4 and PostgreSQL 16 (previously three files), and PHPStan runs at level 8 with a baseline for existing findings
 
 ### Upgrade Notes
 
 - **Define the gates before upgrading production.** Outside `local`, the dashboard and API return `403` until the application defines `viewCrowdSec` and `manageCrowdSec`, for example in `AppServiceProvider::boot()`: `Gate::define('viewCrowdSec', fn ($user) => $user->is_admin);`
 - Published configs keep their `api.middleware`; add `throttle:60,1` (or your own limiter) manually
 - Laravel 10 apps that schedule cleanup in `app/Console/Kernel.php` should add `$schedule->command('crowdsec:cleanup --audit-logs')->daily();` to keep audit retention enforced
+- Some WAF block durations change to the scenario's configured value (for example `directory_bruteforce` blocks last 6 hours instead of 4)
+- To keep blocking admin-role JWT claims, set `waf.scenario_modes.jwt_privilege_escalation` to `enforce`
+- If a header legitimately carries `${…}` lookups, add `jndi_injection` to an exclusion's `skip_scenarios` for that route
+- Run `php artisan migrate` for the new index migration
+- `crowdsec_blocked_ips_total` now counts rows still retained (inactive rows are purged after `retention.blocked_ips_days`), not every IP ever blocked
 
 ## [1.6.0] - 2026-10-16
 

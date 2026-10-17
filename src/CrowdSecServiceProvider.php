@@ -91,6 +91,8 @@ class CrowdSecServiceProvider extends ServiceProvider
                 CrowdSecCleanup::class,
                 CrowdSecStats::class,
                 CrowdSecWhitelist::class,
+                \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecBlock::class,
+                \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecUnblock::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecExport::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecDoctor::class,
             ]);
@@ -182,26 +184,36 @@ class CrowdSecServiceProvider extends ServiceProvider
             // Clean up expired bans daily
             $schedule->command('crowdsec:cleanup --expired')
                 ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup expired bans');
 
             // Clean up old events weekly
             $schedule->command('crowdsec:cleanup --old-events')
                 ->weekly()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup old security events');
 
             // Clean up old behavior records weekly
             $schedule->command('crowdsec:cleanup --old-behaviors')
                 ->weekly()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup old behavior records');
 
             // Clean up audit logs past the retention period daily (no-op unless audit is enabled)
             $schedule->command('crowdsec:cleanup --audit-logs')
                 ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup audit logs past retention');
 
             // Purge expired whitelist entries daily
             $schedule->command('crowdsec:whitelist purge-expired')
                 ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: purge expired whitelist entries');
         });
     }

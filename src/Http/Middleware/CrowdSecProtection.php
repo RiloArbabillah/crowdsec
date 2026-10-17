@@ -94,13 +94,9 @@ class CrowdSecProtection
             return $this->blockedResponse($request, 'HTTP method not allowed', $blockedIp);
         }
 
-        // 4. Check for empty User-Agent (bot indicator)
-        if ($this->service->hasEmptyUserAgent($request)) {
-            $behavior = \RiloArbabillah\LaravelCrowdSec\Models\IpBehavior::getOrCreate($ip);
-            $behavior->addThreatScore(15);
-
-            // Don't block immediately, just score — repeated offenses will trigger threshold
-        }
+        // 4. Check for empty User-Agent (bot indicator). Don't block, just
+        //    score (in step 8's lock) — repeated offenses trigger the threshold.
+        $emptyUserAgentScore = $this->service->hasEmptyUserAgent($request) ? 15.0 : 0.0;
 
         // 5. Check for oversized request body
         if ($this->service->isOversizedRequest($request)) {
@@ -150,7 +146,12 @@ class CrowdSecProtection
             if (! empty($blockingThreats)) {
                 $reason = collect($blockingThreats)->pluck('type')->unique()->implode(', ');
                 $firstType = $blockingThreats[array_key_first($blockingThreats)]['type'] ?? 'security_threat';
-                $blockedIp = $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
+                $blockedIp = $this->service->blockIp(
+                    $ip,
+                    "Threat: {$reason}",
+                    $this->service->blockDurationForThreats($blockingThreats),
+                    $firstType,
+                );
                 $response = $this->blockedResponse($request, 'Malicious pattern detected', $blockedIp);
                 $this->finalizeEventSafely(
                     $securityEvent,
@@ -178,8 +179,16 @@ class CrowdSecProtection
             && $this->isAuthenticated($request)
         );
         $behavior = null;
-        if ($countRequest || $isLoginRequest || ! empty($threats)) {
-            $behavior = $this->service->trackRequest($ip, $isLoginRequest, false, $threats, [], $countRequest);
+        if ($countRequest || $isLoginRequest || ! empty($threats) || $emptyUserAgentScore > 0) {
+            $behavior = $this->service->trackRequest(
+                $ip,
+                $isLoginRequest,
+                false,
+                $threats,
+                [],
+                $countRequest,
+                $emptyUserAgentScore,
+            );
         }
 
         // 9. Check behavior thresholds (including cumulative threat score)

