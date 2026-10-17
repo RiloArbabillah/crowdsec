@@ -150,7 +150,12 @@ class CrowdSecProtection
             if (! empty($blockingThreats)) {
                 $reason = collect($blockingThreats)->pluck('type')->unique()->implode(', ');
                 $firstType = $blockingThreats[array_key_first($blockingThreats)]['type'] ?? 'security_threat';
-                $blockedIp = $this->service->blockIp($ip, "Threat: {$reason}", null, $firstType);
+                $blockedIp = $this->service->blockIp(
+                    $ip,
+                    "Threat: {$reason}",
+                    $this->service->blockDurationForThreats($blockingThreats),
+                    $firstType,
+                );
                 $response = $this->blockedResponse($request, 'Malicious pattern detected', $blockedIp);
                 $this->finalizeEventSafely(
                     $securityEvent,

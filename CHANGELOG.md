@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **JNDI / Log4Shell detection** — new `jndi_injection` scenario (critical) checks every input, including request headers and the User-Agent, for `${jndi:…}` and obfuscated lookups. It is a new top-level config key, so published configs pick it up automatically
+- **Header inspection** — request headers other than the User-Agent, Referer, cookies, Authorization, and standard content headers are inspected by the `header_injection` and `jndi_injection` scenarios
+
 ### Security
 
 - **Dashboard and API were open to every logged-in user** — any authenticated user could block, unblock, or whitelist IPs and read raw security events. The dashboard and read endpoints now require the `viewCrowdSec` gate and write endpoints `manageCrowdSec`. The package defines both to allow access only in the `local` environment; applications grant access by defining them
@@ -21,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`HoneypotTrap` blocked whitelisted IPs and could break requests** — it now skips whitelisted IPs and fails open (counter, log, `CrowdSecMiddlewareFailed` event) when blocking fails
 - **Dashboard whitelist panel used a hardcoded API path** — it now uses the named `crowdsec.api.whitelist` route
 - **Invalid API filters caused server errors** — `events` validates `severity`, `ip`, and `from`; `blocked` validates `ip`; `{ip}` route parameters are constrained
+- **WAF evasions** — payloads now also match after `%uXXXX` decoding, a third URL-decoding layer, HTML entity decoding of URL-decoded input, NUL-byte removal, SQL inline-comment removal (`UNION/**/SELECT`), and NFKC normalization of fullwidth characters (with `intl`)
+- **Padding past 8 KB hid payloads** — `safeMatch()` truncated input to 8 KB; it now scans overlapping 8 KB chunks up to 64 KB
+- **Deeply nested bodies were not inspected** — fields nested deeper than 10 levels were dropped. Flattening now goes 32 levels deep and inspects anything deeper as one JSON string
+- **Chunked requests skipped the size check** — `isOversizedRequest()` measures the body when there is no `Content-Length` header
+- **Scenario `block_duration` was ignored** — WAF blocks used a duration guessed from the reason text. They now use the longest `block_duration` among the blocking threats' scenarios (new `CrowdSecService::blockDurationForThreats()`), falling back to the severity defaults
+- **Admin JWTs were blocked** — `jwt_privilege_escalation` (any token with `role=admin` and similar) defaulted to `enforce`, blocking legitimate admins using bearer tokens. It now defaults to `monitor`; `jwt_payload_*` threats follow their base scenario's mode and exclusions
 
 ### Changed
 
@@ -32,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Define the gates before upgrading production.** Outside `local`, the dashboard and API return `403` until the application defines `viewCrowdSec` and `manageCrowdSec`, for example in `AppServiceProvider::boot()`: `Gate::define('viewCrowdSec', fn ($user) => $user->is_admin);`
 - Published configs keep their `api.middleware`; add `throttle:60,1` (or your own limiter) manually
 - Laravel 10 apps that schedule cleanup in `app/Console/Kernel.php` should add `$schedule->command('crowdsec:cleanup --audit-logs')->daily();` to keep audit retention enforced
+- Some WAF block durations change to the scenario's configured value (for example `directory_bruteforce` blocks last 6 hours instead of 4)
+- To keep blocking admin-role JWT claims, set `waf.scenario_modes.jwt_privilege_escalation` to `enforce`
+- If a header legitimately carries `${…}` lookups, add `jndi_injection` to an exclusion's `skip_scenarios` for that route
 
 ## [1.6.0] - 2026-10-16
 

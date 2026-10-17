@@ -41,6 +41,19 @@ class CrowdSecService
     /** Used when a published config predates `waf.sensitive_body_fields`. */
     protected const DEFAULT_SENSITIVE_BODY_FIELDS = ['password', 'password_confirmation', 'current_password'];
 
+    /** Maximum body nesting flattened field-by-field before the rest is inspected as JSON. */
+    protected const MAX_BODY_DEPTH = 32;
+
+    /**
+     * Headers not inspected as generic header_* sources: inspected elsewhere
+     * (UA, Referer, cookies, Authorization JWTs) or never attacker-meaningful.
+     */
+    protected const UNINSPECTED_HEADERS = [
+        'user-agent', 'referer', 'cookie', 'authorization', 'content-length',
+        'content-type', 'accept', 'accept-encoding', 'accept-language',
+        'x-csrf-token', 'x-xsrf-token',
+    ];
+
     public const NON_SCENARIO_KEYS = [
         'behavior', 'defaults', 'whitelist_ips', 'login_routes',
         'enabled', 'blocked_response_message', 'log_channel',
@@ -421,6 +434,17 @@ class CrowdSecService
         $inputsToCheck['user_agent'] = $request->userAgent() ?? '';
         $inputsToCheck['referer'] = $request->header('Referer') ?? '';
 
+        // Other headers (header_injection / jndi_injection only, see shouldCheckScenario)
+        foreach ($request->headers->all() as $headerName => $headerValues) {
+            if (in_array($headerName, self::UNINSPECTED_HEADERS, true)) {
+                continue;
+            }
+            $headerValue = implode(', ', array_filter($headerValues, 'is_string'));
+            if ($headerValue !== '') {
+                $inputsToCheck["header_{$headerName}"] = $headerValue;
+            }
+        }
+
         // Check cookies
         foreach ($request->cookies->all() as $cookieName => $cookieValue) {
             if (is_string($cookieValue) && $cookieValue !== '') {
@@ -491,9 +515,18 @@ class CrowdSecService
         return array_values(array_filter(array_map(
             function (array $threat) use ($policy, $skippedScenarios): ?array {
                 $type = (string) ($threat['type'] ?? 'unknown');
-                $mode = $threat['mode'] ?? $policy->modeFor($type);
+                // jwt_payload_<scenario> follows its base scenario's mode and exclusions
+                $baseType = str_starts_with($type, 'jwt_payload_') ? substr($type, strlen('jwt_payload_')) : $type;
+                $mode = $threat['mode'] ?? $policy->modeFor($type, match (true) {
+                    $baseType !== $type => ['mode' => $policy->modeFor($baseType, $this->scenarios[$baseType] ?? [])],
+                    // Legitimate admin tokens carry role=admin; enforce only on opt-in.
+                    $type === 'jwt_privilege_escalation' => ['mode' => WafPolicy::MODE_MONITOR],
+                    default => [],
+                });
 
-                if ($mode === WafPolicy::MODE_DISABLED || $policy->skipsScenario($type, $skippedScenarios)) {
+                if ($mode === WafPolicy::MODE_DISABLED
+                    || $policy->skipsScenario($type, $skippedScenarios)
+                    || $policy->skipsScenario($baseType, $skippedScenarios)) {
                     return null;
                 }
 
@@ -517,14 +550,25 @@ class CrowdSecService
             return $isUserAgent;
         }
 
-        // All other scenarios skip UA
-        if ($isUserAgent) {
+        // All other scenarios skip UA (except Log4Shell, often sent in the UA)
+        if ($isUserAgent && $scenarioName !== 'jndi_injection') {
             return false;
         }
 
         // header_injection only checks headers
         if ($scenarioName === 'header_injection') {
             return in_array($source, ['referer', 'user_agent']) || str_starts_with($source, 'header_');
+        }
+
+        // jndi_injection (Log4Shell) checks every source
+        if ($scenarioName === 'jndi_injection') {
+            return true;
+        }
+
+        // Generic headers are noisy (Origin, Host, Accept…); only the
+        // header-specific scenarios above inspect them.
+        if (str_starts_with($source, 'header_')) {
+            return false;
         }
 
         // open_redirect only checks query and path
@@ -543,42 +587,76 @@ class CrowdSecService
      */
     protected function multiDecode(string $input): array
     {
-        $versions = [];
+        $versions = [$input];
 
-        // Original input
-        $versions[] = $input;
-
-        // Single URL decode
-        $decoded1 = urldecode($input);
-        if ($decoded1 !== $input) {
-            $versions[] = $decoded1;
-
-            // Double URL decode (catches double-encoded attacks like %2527 → %27 → ')
-            $decoded2 = urldecode($decoded1);
-            if ($decoded2 !== $decoded1) {
-                $versions[] = $decoded2;
+        // URL decode until stable (up to 3 layers, e.g. %252527 → %2527 → %27 → ')
+        $current = $input;
+        for ($pass = 0; $pass < 3; $pass++) {
+            $next = urldecode($this->decodePercentU($current));
+            if ($next === $current) {
+                break;
             }
+            $versions[] = $current = $next;
         }
 
-        // HTML entity decode
-        $htmlDecoded = html_entity_decode($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        if ($htmlDecoded !== $input && ! in_array($htmlDecoded, $versions, true)) {
-            $versions[] = $htmlDecoded;
+        // HTML entity decode, on the raw and on the URL-decoded input
+        foreach (array_unique([$input, $current]) as $candidate) {
+            $versions[] = html_entity_decode($candidate, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
 
         // Base64 decode — detect encoded payloads
         $b64Decoded = $this->tryBase64Decode($input);
-        if ($b64Decoded !== null && ! in_array($b64Decoded, $versions, true)) {
+        if ($b64Decoded !== null) {
             $versions[] = $b64Decoded;
 
             // Recursive: base64 inside base64 (up to 1 more level)
             $b64Inner = $this->tryBase64Decode($b64Decoded);
-            if ($b64Inner !== null && ! in_array($b64Inner, $versions, true)) {
+            if ($b64Inner !== null) {
                 $versions[] = $b64Inner;
             }
         }
 
-        return array_unique($versions);
+        // Evasion normalization on every version: NUL bytes, SQL inline
+        // comments (UNION/**/SELECT), and fullwidth/compatibility characters.
+        foreach ($versions as $version) {
+            $versions[] = $this->normalizeEvasions($version);
+        }
+
+        return array_values(array_unique($versions));
+    }
+
+    /**
+     * Decode IIS-style %uXXXX escapes.
+     */
+    protected function decodePercentU(string $input): string
+    {
+        if (stripos($input, '%u') === false) {
+            return $input;
+        }
+
+        return (string) preg_replace_callback(
+            '/%u([0-9a-f]{4})/i',
+            fn (array $m): string => mb_chr((int) hexdec($m[1]), 'UTF-8') ?: '',
+            $input,
+        );
+    }
+
+    /**
+     * Strip common WAF evasions so patterns see the effective payload.
+     */
+    protected function normalizeEvasions(string $input): string
+    {
+        $normalized = str_replace("\0", '', $input);
+
+        if (str_contains($normalized, '/*')) {
+            $normalized = (string) preg_replace('#/\*.*?\*/#s', ' ', $normalized);
+        }
+
+        if (class_exists(\Normalizer::class) && preg_match('/[^\x00-\x7F]/', $normalized)) {
+            $normalized = \Normalizer::normalize($normalized, \Normalizer::FORM_KC) ?: $normalized;
+        }
+
+        return $normalized;
     }
 
     /**
@@ -820,7 +898,11 @@ class CrowdSecService
         int $depth = 0,
         array $excludedFields = [],
     ): array {
-        if ($depth > 10) {
+        // Past the depth limit, inspect the remaining subtree as one JSON
+        // string instead of dropping it (deep nesting was a WAF bypass).
+        if ($depth > self::MAX_BODY_DEPTH) {
+            $flatData[$prefix ?: 'nested'] = (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+
             return $flatData;
         }
 
@@ -862,7 +944,12 @@ class CrowdSecService
             return false;
         }
 
-        $contentLength = $request->header('Content-Length') ?? 0;
+        $contentLength = $request->header('Content-Length');
+
+        // Chunked requests carry no Content-Length; measure the body instead.
+        if ($contentLength === null || $contentLength === '') {
+            return strlen((string) $request->getContent()) > $maxLength;
+        }
 
         return (int) $contentLength > $maxLength;
     }
@@ -1332,6 +1419,27 @@ class CrowdSecService
     }
 
     /**
+     * Longest `block_duration` configured for the threats' scenarios, or null
+     * to fall back to the severity defaults.
+     *
+     * @param array<array-key, array<string, mixed>> $threats
+     */
+    public function blockDurationForThreats(array $threats): ?int
+    {
+        $durations = [];
+        foreach ($threats as $threat) {
+            $type = (string) ($threat['type'] ?? '');
+            $type = str_starts_with($type, 'jwt_payload_') ? substr($type, strlen('jwt_payload_')) : $type;
+            $duration = $this->scenarios[$type]['block_duration'] ?? null;
+            if (is_numeric($duration) && (int) $duration > 0) {
+                $durations[] = (int) $duration;
+            }
+        }
+
+        return $durations === [] ? null : max($durations);
+    }
+
+    /**
      * Get threats that should be blocked (critical + high + medium severity)
      *
      * @param array<int, array<string, mixed>> $threats
@@ -1473,18 +1581,36 @@ class CrowdSecService
      * then restores original values. Returns false on catastrophic backtracking
      * (fail-open design — a regex timeout should never block a legitimate user).
      *
+     * Inputs over 8KB are matched in overlapping 8KB chunks (up to 64KB), so
+     * padding a payload past the first 8KB no longer hides it.
+     *
      * @param  string  $pattern  Regex pattern
-     * @param  string  $subject  Input to match against (truncated to 8KB)
+     * @param  string  $subject  Input to match against
      * @return bool Whether the pattern matched
      */
     public function safeMatch(string $pattern, string $subject): bool
     {
-        // Truncate input to 8KB to limit regex processing time
-        $maxInputLength = 8192;
-        if (strlen($subject) > $maxInputLength) {
-            $subject = substr($subject, 0, $maxInputLength);
+        $chunkLength = 8192;
+        if (strlen($subject) <= $chunkLength) {
+            return $this->safeMatchChunk($pattern, $subject);
         }
 
+        $overlap = 512;
+        $limit = min(strlen($subject), 65536);
+        for ($offset = 0; $offset < $limit; $offset += $chunkLength - $overlap) {
+            if ($this->safeMatchChunk($pattern, substr($subject, $offset, $chunkLength))) {
+                return true;
+            }
+            if ($offset + $chunkLength >= $limit) {
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    protected function safeMatchChunk(string $pattern, string $subject): bool
+    {
         // Save current limits
         $originalBacktrack = ini_get('pcre.backtrack_limit');
         $originalRecursion = ini_get('pcre.recursion_limit');

@@ -31,7 +31,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 
 ## Features
 
-- Detection for 15 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, and XXE
+- Detection for 16 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, XXE, and Log4Shell
 - Multi-layer URL and HTML entity decoding to detect encoded payloads
 - Temporary IP blocking with expiration and progressive escalation
 - Request-rate, 404, login-attempt, and threat-score behavior tracking with per-IP row locking, single-acquisition request consolidation, and deadlock-resistant retries
@@ -577,8 +577,13 @@ Do not register these fallback schedules when the package tasks already appear i
 | LDAP injection | High | LDAP filter and distinguished-name manipulation |
 | Server-side template injection | Critical | Common expression and template-control syntax |
 | Open redirect | Medium | External URLs supplied through redirect parameters |
+| JNDI / Log4Shell | Critical | `${jndi:…}` and obfuscated `${${lower:j}ndi:…}` lookups in any input, including headers |
 
-Detection runs after URL decoding, double URL decoding, and HTML entity decoding. Default patterns and severities can be reviewed and adjusted in the published configuration.
+Detection runs on the raw input and on decoded versions: up to three layers of URL decoding (including `%uXXXX`), HTML entity decoding, Base64, and a normalized form with NUL bytes and SQL inline comments (`UNION/**/SELECT`) removed and Unicode compatibility characters folded (NFKC, when the `intl` extension is installed). Inputs over 8 KB are scanned in overlapping chunks up to 64 KB, and body nesting past 32 levels is inspected as JSON. Request headers other than the User-Agent, Referer, cookies, and standard content headers are checked by the header injection and JNDI scenarios only.
+
+A WAF block lasts the scenario's `block_duration`, doubled for each repeat offense up to 7 days. JWT claims such as `role=admin` are reported as `jwt_privilege_escalation` in `monitor` mode; set `waf.scenario_modes.jwt_privilege_escalation` to `enforce` to block them. Patterns found inside a JWT payload follow the mode and exclusions of their base scenario.
+
+Default patterns and severities can be reviewed and adjusted in the published configuration.
 
 Because application traffic varies, test configuration changes against representative legitimate requests before deploying stricter patterns or thresholds.
 
