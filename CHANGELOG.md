@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **JNDI / Log4Shell detection** — new `jndi_injection` scenario (critical) checks every input, including request headers and the User-Agent, for `${jndi:…}` and obfuscated lookups. It is a new top-level config key, so published configs pick it up automatically
 - **Header inspection** — request headers other than the User-Agent, Referer, cookies, Authorization, and standard content headers are inspected by the `header_injection` and `jndi_injection` scenarios
+- **Migration `2026_10_17_000000_optimize_crowdsec_indexes.php`** — adds `security_events (event_type, severity)` for the metrics endpoint's grouping and drops two redundant indexes (`security_events.event_type`, covered by the new composite, and `blocked_ips.ip`, covered by the unique index)
 
 ### Security
 
@@ -32,11 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chunked requests skipped the size check** — `isOversizedRequest()` measures the body when there is no `Content-Length` header
 - **Scenario `block_duration` was ignored** — WAF blocks used a duration guessed from the reason text. They now use the longest `block_duration` among the blocking threats' scenarios (new `CrowdSecService::blockDurationForThreats()`), falling back to the severity defaults
 - **Admin JWTs were blocked** — `jwt_privilege_escalation` (any token with `role=admin` and similar) defaulted to `enforce`, blocking legitimate admins using bearer tokens. It now defaults to `monitor`; `jwt_payload_*` threats follow their base scenario's mode and exclusions
+- **The first blocked-cache invalidation did nothing** — `invalidateAllBlockedCaches()` incremented a missing version key to `1`, the implicit current version, so cached blocks survived the first whitelist change. The key is seeded before it is incremented
 
 ### Changed
 
 - API routes are named `crowdsec.api.*`
 - `GET /api/crowdsec/check/{ip}` returns only behavior counters (`request_count`, `error_404_count`, `login_attempts`, `threat_score`, `block_count`, `last_activity`) instead of the full row
+- **Fewer queries per request** — a clean request takes one `ip_behaviors` lock (5 queries instead of 7 on SQLite); the empty User-Agent score is written in the same lock as the request count instead of two extra locks, and `track404()` takes one lock instead of two. `trackRequest()` accepts an `$additionalThreatScore` argument
+- **PCRE limits are set once per WAF pass** — `checkWafPatterns()` lowers `pcre.backtrack_limit`/`pcre.recursion_limit` once and restores them afterwards, instead of four `ini_set()` calls per pattern match
 
 ### Upgrade Notes
 
@@ -46,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Some WAF block durations change to the scenario's configured value (for example `directory_bruteforce` blocks last 6 hours instead of 4)
 - To keep blocking admin-role JWT claims, set `waf.scenario_modes.jwt_privilege_escalation` to `enforce`
 - If a header legitimately carries `${…}` lookups, add `jndi_injection` to an exclusion's `skip_scenarios` for that route
+- Run `php artisan migrate` for the new index migration
 
 ## [1.6.0] - 2026-10-16
 
