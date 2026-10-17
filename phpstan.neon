@@ -1,8 +1,9 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
 
 parameters:
-    level: 6
+    level: 8
     treatPhpDocTypesAsCertain: false
     paths:
         - src

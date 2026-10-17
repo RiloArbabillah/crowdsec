@@ -67,6 +67,7 @@ class CrowdSecService
         'audit',
         'dashboard',
         'event_context',
+        'retention',
         'waf',
     ];
 
@@ -913,7 +914,10 @@ class CrowdSecService
         // Past the depth limit, inspect the remaining subtree as one JSON
         // string instead of dropping it (deep nesting was a WAF bypass).
         if ($depth > self::MAX_BODY_DEPTH) {
-            $flatData[$prefix ?: 'nested'] = (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            $flatData[$prefix ?: 'nested'] = (string) json_encode(
+                $this->withoutExcludedKeys($data, $excludedFields),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR,
+            );
 
             return $flatData;
         }
@@ -943,6 +947,32 @@ class CrowdSecService
         }
 
         return $flatData;
+    }
+
+    /**
+     * Recursively drop keys named in $excludedFields (plain key names, and
+     * the last segment of dotted patterns) from a subtree.
+     *
+     * @param array<array-key, mixed> $data
+     * @param list<string> $excludedFields
+     * @return array<array-key, mixed>
+     */
+    protected function withoutExcludedKeys(array $data, array $excludedFields): array
+    {
+        $names = array_map(
+            fn ($pattern): string => strtolower(Str::afterLast(trim((string) $pattern), '.')),
+            $excludedFields,
+        );
+
+        foreach ($data as $key => $value) {
+            if (in_array(strtolower((string) $key), $names, true)) {
+                unset($data[$key]);
+            } elseif (is_array($value)) {
+                $data[$key] = $this->withoutExcludedKeys($value, $excludedFields);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -1644,10 +1674,17 @@ class CrowdSecService
         $overlap = 512;
         $limit = min(strlen($subject), 65536);
         for ($offset = 0; $offset < $limit; $offset += $chunkLength - $overlap) {
-            if ($this->safeMatchChunk($pattern, substr($subject, $offset, $chunkLength))) {
+            $isLast = $offset + $chunkLength >= $limit;
+            // A \x01 sentinel at interior chunk edges keeps ^ and $ from
+            // matching there; they should only match the real start and end.
+            $chunk = ($offset > 0 ? "\x01" : '')
+                . substr($subject, $offset, $isLast ? $limit - $offset : $chunkLength)
+                . ($isLast ? '' : "\x01");
+
+            if ($this->safeMatchChunk($pattern, $chunk)) {
                 return true;
             }
-            if ($offset + $chunkLength >= $limit) {
+            if ($isLast) {
                 break;
             }
         }
