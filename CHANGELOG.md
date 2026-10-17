@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-17
+
 ### Added
 
 - **JNDI / Log4Shell detection** — new `jndi_injection` scenario (critical) checks every input, including request headers and the User-Agent, for `${jndi:…}` and obfuscated lookups. It is a new top-level config key, so published configs pick it up automatically
