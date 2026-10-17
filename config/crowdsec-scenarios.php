@@ -582,6 +582,20 @@ return [
         'enabled' => env('CROWDSEC_METRICS_ENABLED', false),
         'path' => 'crowdsec/metrics', // Metrics endpoint URL path
         'middleware' => ['web', 'auth'], // Override with signed or IP allowlist middleware if needed
+        'cache_seconds' => env('CROWDSEC_METRICS_CACHE_SECONDS', 15), // 0 disables output caching
+    ],
+
+    // =========================================================================
+    // RETENTION (crowdsec:cleanup)
+    // =========================================================================
+
+    'retention' => [
+        'events_days' => env('CROWDSEC_EVENT_RETENTION_DAYS', 30), // security_events
+        'behavior_days' => env('CROWDSEC_BEHAVIOR_RETENTION_DAYS', 30), // inactive ip_behaviors rows
+        'blocked_ips_days' => env('CROWDSEC_BLOCK_RETENTION_DAYS', 30), // inactive blocked_ips rows
+        // Reset an IP's block escalation (block_count) once it has gone this
+        // long without being blocked, so shared/NAT IPs do not stay at the cap.
+        'block_count_reset_days' => env('CROWDSEC_BLOCK_COUNT_RESET_DAYS', 30),
     ],
 
     // =========================================================================

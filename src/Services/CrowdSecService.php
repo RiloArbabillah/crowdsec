@@ -67,6 +67,7 @@ class CrowdSecService
         'audit',
         'dashboard',
         'event_context',
+        'retention',
         'waf',
     ];
 

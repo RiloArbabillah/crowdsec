@@ -13,8 +13,26 @@ class CrowdSecMetricsController extends Controller
 {
     /**
      * GET /crowdsec/metrics — Prometheus/OpenMetrics endpoint
+     *
+     * The body is cached for `metrics.cache_seconds` (default 15) because
+     * every scrape aggregates whole tables.
      */
     public function __invoke(): Response
+    {
+        $ttl = (int) config('crowdsec-scenarios.metrics.cache_seconds', 15);
+
+        $body = $ttl > 0
+            ? Cache::remember('crowdsec:metrics:body', $ttl, fn (): string => $this->render())
+            : $this->render();
+
+        return response(
+            $body,
+            200,
+            ['Content-Type' => 'text/plain; version=0.0.4; charset=utf-8']
+        );
+    }
+
+    protected function render(): string
     {
         $lines = [];
 
@@ -87,11 +105,7 @@ class CrowdSecMetricsController extends Controller
 
         $lines[] = '';
 
-        return response(
-            implode("\n", $lines),
-            200,
-            ['Content-Type' => 'text/plain; version=0.0.4; charset=utf-8']
-        );
+        return implode("\n", $lines);
     }
 
     protected function sanitizeLabel(string $value): string
