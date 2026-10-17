@@ -14,7 +14,8 @@ class CrowdSecCleanup extends Command
                            {--dry-run : Show what would be deleted without actually deleting}
                            {--expired : Clean up expired bans only}
                            {--old-events : Clean up old security events only}
-                           {--old-behaviors : Clean up old behavior records only}';
+                           {--old-behaviors : Clean up old behavior records only}
+                           {--audit-logs : Clean up audit logs past the retention period only}';
 
     protected $description = 'Clean up expired bans, old events, and behavior records';
 
@@ -25,12 +26,13 @@ class CrowdSecCleanup extends Command
         // If any specific option is set, only run those. Otherwise, run all.
         $anySpecific = $this->option('expired')
             || $this->option('old-events')
-            || $this->option('old-behaviors');
+            || $this->option('old-behaviors')
+            || $this->option('audit-logs');
 
         $cleanupExpired = ! $anySpecific || $this->option('expired');
         $cleanupEvents = ! $anySpecific || $this->option('old-events');
         $cleanupBehaviors = ! $anySpecific || $this->option('old-behaviors');
-        $cleanupAuditLogs = ! $anySpecific || $this->shouldCleanupAuditLogs();
+        $cleanupAuditLogs = (! $anySpecific || $this->option('audit-logs')) && $this->shouldCleanupAuditLogs();
 
         $totalCleaned = 0;
 

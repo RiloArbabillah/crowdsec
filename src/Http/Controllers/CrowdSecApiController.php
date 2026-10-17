@@ -37,6 +37,12 @@ class CrowdSecApiController extends Controller
      */
     public function events(Request $request): JsonResponse
     {
+        $request->validate([
+            'severity' => 'nullable|in:low,medium,high,critical',
+            'ip' => 'nullable|ip',
+            'from' => 'nullable|date',
+        ]);
+
         $query = SecurityEvent::query()->orderBy('created_at', 'desc');
 
         if ($severity = $request->query('severity')) {
@@ -73,6 +79,10 @@ class CrowdSecApiController extends Controller
      */
     public function blocked(Request $request): JsonResponse
     {
+        $request->validate([
+            'ip' => 'nullable|ip',
+        ]);
+
         $query = BlockedIp::active()->orderBy('created_at', 'desc');
 
         if ($ip = $request->query('ip')) {
@@ -129,7 +139,14 @@ class CrowdSecApiController extends Controller
             'ip' => $ip,
             'is_blocked' => $this->service->isBlocked($ip),
             'is_whitelisted' => $this->service->isWhitelisted($ip),
-            'behavior' => IpBehavior::where('ip', $ip)->first(),
+            'behavior' => IpBehavior::where('ip', $ip)->first([
+                'request_count',
+                'error_404_count',
+                'login_attempts',
+                'threat_score',
+                'block_count',
+                'last_activity',
+            ]),
         ]);
     }
 
@@ -139,6 +156,11 @@ class CrowdSecApiController extends Controller
     public function whitelist(Request $request): JsonResponse
     {
         $query = WhitelistedIp::query()->orderBy('created_at', 'desc');
+
+        $request->validate([
+            'ip' => 'nullable|string|max:49',
+            'label' => 'nullable|string|max:100',
+        ]);
 
         if ($ip = $request->query('ip')) {
             $query->where('ip', 'like', "%{$ip}%");

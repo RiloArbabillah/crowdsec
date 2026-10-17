@@ -555,7 +555,9 @@ return [
 
     'api' => [
         'enabled' => env('CROWDSEC_API_ENABLED', false),
-        'middleware' => ['api', 'auth:sanctum'], // Override if you use a different auth guard
+        // Override if you use a different auth guard. Routes additionally
+        // require the viewCrowdSec (read) / manageCrowdSec (write) gates.
+        'middleware' => ['api', 'auth:sanctum', 'throttle:60,1'],
     ],
 
     // =========================================================================
@@ -584,6 +586,6 @@ return [
     'dashboard' => [
         'enabled' => env('CROWDSEC_DASHBOARD_ENABLED', false),
         'path' => 'crowdsec', // Dashboard URL path
-        'middleware' => ['web', 'auth'],
+        'middleware' => ['web', 'auth'], // The route additionally requires the viewCrowdSec gate
     ],
 ];

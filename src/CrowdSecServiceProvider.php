@@ -6,6 +6,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
@@ -66,6 +67,14 @@ class CrowdSecServiceProvider extends ServiceProvider
         // Load dashboard routes (if enabled)
         if (config('crowdsec-scenarios.dashboard.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+        }
+
+        // Dashboard/API authorization. Deny by default outside `local`; the app
+        // grants access by defining these gates (its providers boot after ours).
+        foreach (['viewCrowdSec', 'manageCrowdSec'] as $ability) {
+            if (! Gate::has($ability)) {
+                Gate::define($ability, fn ($user) => $this->app->environment('local'));
+            }
         }
 
         // Register views
@@ -165,6 +174,7 @@ class CrowdSecServiceProvider extends ServiceProvider
      *   $schedule->command('crowdsec:cleanup --expired')->daily();
      *   $schedule->command('crowdsec:cleanup --old-events')->weekly();
      *   $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+     *   $schedule->command('crowdsec:cleanup --audit-logs')->daily();
      */
     protected function registerScheduledCleanup(): void
     {
@@ -183,6 +193,11 @@ class CrowdSecServiceProvider extends ServiceProvider
             $schedule->command('crowdsec:cleanup --old-behaviors')
                 ->weekly()
                 ->description('CrowdSec: cleanup old behavior records');
+
+            // Clean up audit logs past the retention period daily (no-op unless audit is enabled)
+            $schedule->command('crowdsec:cleanup --audit-logs')
+                ->daily()
+                ->description('CrowdSec: cleanup audit logs past retention');
 
             // Purge expired whitelist entries daily
             $schedule->command('crowdsec:whitelist purge-expired')

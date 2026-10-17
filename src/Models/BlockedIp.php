@@ -122,6 +122,9 @@ class BlockedIp extends Model
      * this *after* any ip_behaviors lock is taken, keeping the lock order
      * consistent: ip_behaviors -> blocked_ips.
      *
+     * A still-active block that ends later (or never) keeps its expiry, so a
+     * lower-severity offense cannot shorten a longer or permanent block.
+     *
      * @return self The freshly persisted block row.
      */
     public static function upsertBlock(
@@ -134,6 +137,11 @@ class BlockedIp extends Model
 
         /** @var self|null $existing */
         $existing = static::query()->where('ip', $ip)->first();
+
+        if ($expiresAt !== null && $existing?->is_active
+            && ($existing->expires_at === null || $existing->expires_at->greaterThan($expiresAt))) {
+            $expiresAt = $existing->expires_at;
+        }
 
         static::query()->upsert(
             [

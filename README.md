@@ -356,7 +356,7 @@ The REST API, metrics endpoint, audit log, dashboard, notifications, GeoIP looku
 
 ### REST API
 
-Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', 'auth:sanctum']`.
+Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', 'auth:sanctum', 'throttle:60,1']`. Read endpoints also require the `viewCrowdSec` gate and write endpoints the `manageCrowdSec` gate (see [Authorization](#authorization)).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -366,6 +366,9 @@ Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', '
 | `POST` | `/api/crowdsec/block` | Manually block an IP |
 | `DELETE` | `/api/crowdsec/block/{ip}` | Unblock an IP |
 | `GET` | `/api/crowdsec/check/{ip}` | Check an IP's block status |
+| `GET` | `/api/crowdsec/whitelist` | Dynamic whitelist entries |
+| `POST` | `/api/crowdsec/whitelist` | Add a whitelist entry |
+| `DELETE` | `/api/crowdsec/whitelist/{ip}` | Remove a whitelist entry |
 
 If the application does not use Sanctum, replace the middleware with an equivalent authenticated API guard. Do not expose management routes without authentication.
 
@@ -379,12 +382,28 @@ The endpoint exposes `crowdsec_threats_total`, `crowdsec_blocked_ips_active`, `c
 
 ### Admin dashboard
 
-Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']`.
+Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']` and the `viewCrowdSec` gate. The whitelist panel appears when the REST API is enabled and uses its `manageCrowdSec`-gated endpoints.
 
 The bundled Blade dashboard shows recent events, active blocks, top attackers, severity breakdowns, source countries, and device types. Publish its views only when customization is needed:
 
 ```bash
 php artisan vendor:publish --tag=crowdsec-views
+```
+
+### Authorization
+
+The dashboard and REST API require two gates on top of authentication:
+
+- `viewCrowdSec` — dashboard and read-only API endpoints
+- `manageCrowdSec` — block, unblock, and whitelist changes
+
+The package defines both to allow access only in the `local` environment. Define them in your application to grant access elsewhere, for example in `AppServiceProvider::boot()`:
+
+```php
+use Illuminate\Support\Facades\Gate;
+
+Gate::define('viewCrowdSec', fn ($user) => $user->is_admin);
+Gate::define('manageCrowdSec', fn ($user) => $user->is_admin);
 ```
 
 ### GeoIP enrichment
@@ -494,9 +513,10 @@ php artisan crowdsec:cleanup --dry-run
 php artisan crowdsec:cleanup --expired
 php artisan crowdsec:cleanup --old-events
 php artisan crowdsec:cleanup --old-behaviors
+php artisan crowdsec:cleanup --audit-logs
 ```
 
-Security events and inactive behavior records are removed after 30 days. Audit records use `CROWDSEC_AUDIT_RETENTION_DAYS`. The `--dry-run` option does not modify data.
+Selectors only run the cleanups they name. Security events and inactive behavior records are removed after 30 days. Audit records use `CROWDSEC_AUDIT_RETENTION_DAYS`. The `--dry-run` option does not modify data.
 
 ### SIEM export
 
@@ -516,6 +536,7 @@ The package registers these tasks automatically through Laravel's scheduler:
 - Expired bans: daily
 - Security events older than 30 days: weekly
 - Inactive behavior records older than 30 days: weekly
+- Audit records past `CROWDSEC_AUDIT_RETENTION_DAYS`: daily (when audit logging is enabled)
 - Expired dynamic whitelist entries: daily
 
 The application must still run Laravel's scheduler in production, for example through a cron entry that invokes `php artisan schedule:run` every minute.
@@ -530,6 +551,7 @@ protected function schedule(Schedule $schedule): void
     $schedule->command('crowdsec:cleanup --expired')->daily();
     $schedule->command('crowdsec:cleanup --old-events')->weekly();
     $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+    $schedule->command('crowdsec:cleanup --audit-logs')->daily();
     $schedule->command('crowdsec:whitelist purge-expired')->daily();
 }
 ```
@@ -605,7 +627,7 @@ All tables are managed by the package migrations loaded by the service provider.
 2. Protect sensitive routes first, then expand coverage after reviewing legitimate traffic.
 3. Configure trusted proxies so Laravel resolves the actual client IP.
 4. Add internal services and trusted networks to `whitelist_ips` (config) or via `php artisan crowdsec:whitelist add …` (DB layer), using CIDR entries where appropriate.
-5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them.
+5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them, and define the `viewCrowdSec` / `manageCrowdSec` gates.
 6. Configure Laravel mail or Slack before enabling notifications.
 7. Confirm `php artisan schedule:list` includes cleanup tasks and that the scheduler runs in production.
 8. Monitor `crowdsec:stats`, application logs, security events, and optional metrics.

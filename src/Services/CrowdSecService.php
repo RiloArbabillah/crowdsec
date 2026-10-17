@@ -145,7 +145,7 @@ class CrowdSecService
      */
     protected function matchesWhitelistEntry(string $ip, string $entry): bool
     {
-        if ($ip === $entry) {
+        if ($ip === $entry || $this->normalizeIp($ip) === $this->normalizeIp($entry)) {
             return true;
         }
         if (str_contains($entry, '/') && $this->ipInCidr($ip, $entry)) {
@@ -329,6 +329,24 @@ class CrowdSecService
     }
 
     /**
+     * Canonical form of an IP: compressed IPv6, IPv4-mapped IPv6 as IPv4.
+     * Returns the input unchanged when it is not a valid IP.
+     */
+    protected function normalizeIp(string $ip): string
+    {
+        $bin = @inet_pton($ip);
+        if ($bin === false) {
+            return $ip;
+        }
+
+        if (strlen($bin) === 16 && str_starts_with($bin, str_repeat("\0", 10) . "\xff\xff")) {
+            $bin = substr($bin, 12);
+        }
+
+        return (string) inet_ntop($bin);
+    }
+
+    /**
      * Check if an IP address falls within a CIDR range
      */
     protected function ipInCidr(string $ip, string $cidr): bool
@@ -336,10 +354,12 @@ class CrowdSecService
         [$subnet, $bits] = explode('/', $cidr, 2);
         $bits = (int) $bits;
 
-        $ipBin = inet_pton($ip);
-        $subnetBin = inet_pton($subnet);
+        $ipBin = @inet_pton($this->normalizeIp($ip));
+        $subnetBin = @inet_pton($subnet);
 
-        if ($ipBin === false || $subnetBin === false) {
+        // Different address families never match: PHP's `&` truncates to the
+        // shorter string, so an IPv4 address would otherwise match an IPv6 range.
+        if ($ipBin === false || $subnetBin === false || strlen($ipBin) !== strlen($subnetBin)) {
             return false;
         }
 
@@ -1137,6 +1157,15 @@ class CrowdSecService
 
                 $behavior->setAttribute('block_count', $previousBlockCount + 1);
                 $behavior->setAttribute('last_activity', now());
+
+                // The block is the penalty; block_count carries the escalation.
+                // Without this the score is still over the threshold when the
+                // block expires, and the first request re-blocks at double length.
+                $scoreThreshold = (float) ($this->scenarios['behavior']['threat_score_threshold'] ?? 50);
+                if ((float) $behavior->threat_score >= $scoreThreshold) {
+                    $behavior->setAttribute('threat_score', $scoreThreshold / 2);
+                }
+
                 $behavior->save();
 
                 // Atomic upsert (INSERT ... ON DUPLICATE KEY UPDATE) instead of

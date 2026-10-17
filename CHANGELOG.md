@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Dashboard and API were open to every logged-in user** — any authenticated user could block, unblock, or whitelist IPs and read raw security events. The dashboard and read endpoints now require the `viewCrowdSec` gate and write endpoints `manageCrowdSec`. The package defines both to allow access only in the `local` environment; applications grant access by defining them
+- **REST API had no rate limit** — the default `api.middleware` now includes `throttle:60,1`
+- **IPv4 addresses matched IPv6 whitelist ranges** — `2001:db8::/32` matched `32.1.13.184` because the CIDR check compared addresses of different lengths. Different address families never match now; IPv4-mapped IPv6 addresses (`::ffff:10.0.0.1`) match IPv4 entries, and IPv6 exact matches ignore notation
+
+### Fixed
+
+- **`crowdsec:cleanup --expired` deleted audit logs** — any selector also ran the audit-log cleanup, so the daily `--expired` schedule pruned audit records. Audit cleanup now runs without selectors or with the new `--audit-logs` option, which has its own daily schedule
+- **A new block could shorten a longer one** — `BlockedIp::upsertBlock()` overwrote `expires_at`, so a honeypot hit could cut a 7-day or permanent block to 4 hours. An active block that ends later (or never) keeps its expiry
+- **Blocked IPs were re-blocked on the first request after expiry** — the threat score stayed above `threat_score_threshold` through the block, so the next request blocked again at double the duration. Blocking now lowers a score at or above the threshold to half the threshold; `block_count` still drives escalation
+- **`HoneypotTrap` blocked whitelisted IPs and could break requests** — it now skips whitelisted IPs and fails open (counter, log, `CrowdSecMiddlewareFailed` event) when blocking fails
+- **Dashboard whitelist panel used a hardcoded API path** — it now uses the named `crowdsec.api.whitelist` route
+- **Invalid API filters caused server errors** — `events` validates `severity`, `ip`, and `from`; `blocked` validates `ip`; `{ip}` route parameters are constrained
+
+### Changed
+
+- API routes are named `crowdsec.api.*`
+- `GET /api/crowdsec/check/{ip}` returns only behavior counters (`request_count`, `error_404_count`, `login_attempts`, `threat_score`, `block_count`, `last_activity`) instead of the full row
+
+### Upgrade Notes
+
+- **Define the gates before upgrading production.** Outside `local`, the dashboard and API return `403` until the application defines `viewCrowdSec` and `manageCrowdSec`, for example in `AppServiceProvider::boot()`: `Gate::define('viewCrowdSec', fn ($user) => $user->is_admin);`
+- Published configs keep their `api.middleware`; add `throttle:60,1` (or your own limiter) manually
+- Laravel 10 apps that schedule cleanup in `app/Console/Kernel.php` should add `$schedule->command('crowdsec:cleanup --audit-logs')->daily();` to keep audit retention enforced
+
 ## [1.6.0] - 2026-10-16
 
 ### Added

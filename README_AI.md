@@ -202,9 +202,9 @@ Enable optional features only when requested and only after validating their pre
 | Notifications | `CROWDSEC_NOTIFY_ENABLED=true` | Confirm Laravel mail and/or a Slack webhook; never expose the webhook |
 | GeoIP | `CROWDSEC_GEOIP_ENABLED=true` | Review provider privacy and usage terms; confirm outbound access |
 | Audit logging | `CROWDSEC_AUDIT_ENABLED=true` | Confirm retention requirements and scheduled cleanup |
-| REST API | `CROWDSEC_API_ENABLED=true` | Keep `api` plus an authenticated guard; default is `auth:sanctum` |
+| REST API | `CROWDSEC_API_ENABLED=true` | Keep `api` plus an authenticated guard (default `auth:sanctum`) and `throttle`; define the `viewCrowdSec` / `manageCrowdSec` gates |
 | Metrics | `CROWDSEC_METRICS_ENABLED=true` | Keep `auth` or `signed` middleware; confirm monitoring access |
-| Dashboard | `CROWDSEC_DASHBOARD_ENABLED=true` | Keep `web` and authenticated middleware |
+| Dashboard | `CROWDSEC_DASHBOARD_ENABLED=true` | Keep `web` and authenticated middleware; define the `viewCrowdSec` gate |
 
 Run `php artisan crowdsec:doctor` after enabling any optional feature. Do not remove an authentication warning merely to make the doctor command pass.
 
@@ -228,7 +228,7 @@ Secure defaults are:
 ```php
 'api' => [
     'enabled' => env('CROWDSEC_API_ENABLED', false),
-    'middleware' => ['api', 'auth:sanctum'],
+    'middleware' => ['api', 'auth:sanctum', 'throttle:60,1'],
 ],
 
 'metrics' => [
@@ -243,6 +243,8 @@ Secure defaults are:
 ```
 
 If Sanctum is unavailable, select an authentication guard already used by the target application. Never replace it with an empty middleware list.
+
+The dashboard and read endpoints also require the `viewCrowdSec` gate; block, unblock, and whitelist endpoints require `manageCrowdSec`. Outside the `local` environment both deny until the application defines them. Ask the user which users may view and manage CrowdSec, then define the gates (for example in `AppServiceProvider::boot()`) using the application's existing role or permission check. Never define them as `fn () => true`.
 
 ## Verification
 
