@@ -226,7 +226,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_secure_endpoint_defaults_require_authentication(): void
     {
-        $this->assertSame(['api', 'auth:sanctum'], config('crowdsec-scenarios.api.middleware'));
+        $this->assertSame(['api', 'auth:sanctum', 'throttle:60,1'], config('crowdsec-scenarios.api.middleware'));
         $this->assertSame(['web', 'auth'], config('crowdsec-scenarios.metrics.middleware'));
         $this->assertSame(['web', 'auth'], config('crowdsec-scenarios.dashboard.middleware'));
     }

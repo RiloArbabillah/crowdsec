@@ -128,7 +128,7 @@
         </div>
 
         {{-- Whitelist --}}
-        @if(config('crowdsec-scenarios.api.enabled', false))
+        @if(\Illuminate\Support\Facades\Route::has('crowdsec.api.whitelist'))
         <div class="card" style="margin-top: 24px;">
             <h2>Dynamic IP Whitelist</h2>
             <p style="color: #94a3b8; font-size: 12px; margin: 8px 0 16px 0;">
@@ -175,7 +175,7 @@
 
         <script>
         (function () {
-            const apiBase = @json(route('crowdsec.dashboard', [], false) ? '/api/crowdsec' : '/api/crowdsec');
+            const whitelistUrl = @json(route('crowdsec.api.whitelist', [], false));
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
             async function loadWhitelist() {
@@ -183,7 +183,7 @@
                 const msg = document.getElementById('whitelist-message');
                 msg.textContent = '';
                 try {
-                    const res = await fetch(apiBase + '/whitelist', { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+                    const res = await fetch(whitelistUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const json = await res.json();
                     const data = json.data || json;
@@ -225,7 +225,7 @@
                 if (!body.ip) { msg.textContent = 'IP is required.'; msg.style.color = '#f87171'; return false; }
                 msg.textContent = 'Adding…'; msg.style.color = '#94a3b8';
                 try {
-                    const res = await fetch(apiBase + '/whitelist', {
+                    const res = await fetch(whitelistUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
                         credentials: 'same-origin',
@@ -251,7 +251,7 @@
                 if (!ip) return;
                 if (!window.confirm('Remove ' + ip + ' from the dynamic whitelist?')) return;
                 try {
-                    const res = await fetch(apiBase + '/whitelist/' + encodeURIComponent(ip), {
+                    const res = await fetch(whitelistUrl + '/' + encodeURIComponent(ip), {
                         method: 'DELETE',
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
                         credentials: 'same-origin',

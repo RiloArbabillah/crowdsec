@@ -31,7 +31,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 
 ## Features
 
-- Detection for 15 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, and XXE
+- Detection for 16 attack categories, including SQL injection, XSS, path traversal, command injection, SSRF, XXE, and Log4Shell
 - Multi-layer URL and HTML entity decoding to detect encoded payloads
 - Temporary IP blocking with expiration and progressive escalation
 - Request-rate, 404, login-attempt, and threat-score behavior tracking with per-IP row locking, single-acquisition request consolidation, and deadlock-resistant retries
@@ -49,7 +49,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 ## Requirements
 
 - PHP `^8.1`
-- Laravel `^10.0`, `^11.0`, or `^12.0`
+- Laravel `^10.0`, `^11.0`, `^12.0`, or `^13.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
 The latest stable package release is `v1.6.0`.
@@ -325,6 +325,11 @@ The `crowdsec.rate` middleware uses Laravel's atomic rate limiter and returns `R
 | `CROWDSEC_USER_HASH_KEY` | `APP_KEY` | Dedicated HMAC key for stable user hashes |
 | `CROWDSEC_API_ENABLED` | `false` | Enable the REST management API |
 | `CROWDSEC_METRICS_ENABLED` | `false` | Enable the metrics endpoint |
+| `CROWDSEC_METRICS_CACHE_SECONDS` | `15` | Metrics output cache lifetime; `0` disables it |
+| `CROWDSEC_EVENT_RETENTION_DAYS` | `30` | Security event retention for `crowdsec:cleanup` |
+| `CROWDSEC_BEHAVIOR_RETENTION_DAYS` | `30` | Retention of inactive behavior records |
+| `CROWDSEC_BLOCK_RETENTION_DAYS` | `30` | Retention of inactive (expired or unblocked) block rows |
+| `CROWDSEC_BLOCK_COUNT_RESET_DAYS` | `30` | Reset an IP's block escalation after this many days without a block |
 | `CROWDSEC_AUDIT_ENABLED` | `false` | Record manual block and unblock audit events |
 | `CROWDSEC_AUDIT_RETENTION_DAYS` | `365` | Audit record retention period |
 | `CROWDSEC_DASHBOARD_ENABLED` | `false` | Enable the admin dashboard |
@@ -356,7 +361,7 @@ The REST API, metrics endpoint, audit log, dashboard, notifications, GeoIP looku
 
 ### REST API
 
-Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', 'auth:sanctum']`.
+Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', 'auth:sanctum', 'throttle:60,1']`. Read endpoints also require the `viewCrowdSec` gate and write endpoints the `manageCrowdSec` gate (see [Authorization](#authorization)).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -366,6 +371,9 @@ Enable it with `CROWDSEC_API_ENABLED=true`. The default middleware is `['api', '
 | `POST` | `/api/crowdsec/block` | Manually block an IP |
 | `DELETE` | `/api/crowdsec/block/{ip}` | Unblock an IP |
 | `GET` | `/api/crowdsec/check/{ip}` | Check an IP's block status |
+| `GET` | `/api/crowdsec/whitelist` | Dynamic whitelist entries |
+| `POST` | `/api/crowdsec/whitelist` | Add a whitelist entry |
+| `DELETE` | `/api/crowdsec/whitelist/{ip}` | Remove a whitelist entry |
 
 If the application does not use Sanctum, replace the middleware with an equivalent authenticated API guard. Do not expose management routes without authentication.
 
@@ -373,18 +381,36 @@ If the application does not use Sanctum, replace the middleware with an equivale
 
 Enable metrics with `CROWDSEC_METRICS_ENABLED=true`. The default path is `/crowdsec/metrics`, protected by `['web', 'auth']`.
 
+The response is cached for `metrics.cache_seconds` (default 15) because each scrape aggregates whole tables.
+
 For monitoring systems that cannot authenticate through a Laravel session, configure a signed URL or a dedicated allowlist middleware. The doctor command rejects an enabled metrics endpoint that has neither `auth` nor `signed` protection.
 
 The endpoint exposes `crowdsec_threats_total`, `crowdsec_blocked_ips_active`, `crowdsec_blocked_ips_total`, `crowdsec_tracked_ips`, `crowdsec_high_threat_ips`, `crowdsec_threat_score_average`, `crowdsec_events_today`, `crowdsec_events_this_hour`, and `crowdsec_middleware_failed_total`. Alert on a rising `crowdsec_middleware_failed_total`: it counts times the middleware failed open and protection was skipped.
 
 ### Admin dashboard
 
-Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']`.
+Enable the dashboard with `CROWDSEC_DASHBOARD_ENABLED=true`. The default path is `/crowdsec`, protected by `['web', 'auth']` and the `viewCrowdSec` gate. The whitelist panel appears when the REST API is enabled and uses its `manageCrowdSec`-gated endpoints.
 
 The bundled Blade dashboard shows recent events, active blocks, top attackers, severity breakdowns, source countries, and device types. Publish its views only when customization is needed:
 
 ```bash
 php artisan vendor:publish --tag=crowdsec-views
+```
+
+### Authorization
+
+The dashboard and REST API require two gates on top of authentication:
+
+- `viewCrowdSec` — dashboard and read-only API endpoints
+- `manageCrowdSec` — block, unblock, and whitelist changes
+
+The package defines both to allow access only in the `local` environment. Define them in your application to grant access elsewhere, for example in `AppServiceProvider::boot()`:
+
+```php
+use Illuminate\Support\Facades\Gate;
+
+Gate::define('viewCrowdSec', fn ($user) => $user->is_admin);
+Gate::define('manageCrowdSec', fn ($user) => $user->is_admin);
 ```
 
 ### GeoIP enrichment
@@ -464,6 +490,8 @@ Expired entries are automatically purged by the daily scheduled task. Use the `e
 | `php artisan crowdsec:doctor` | Validate configuration, migrations, patterns, and integrations |
 | `php artisan crowdsec:stats` | Show blocks, event totals, threat counts, and top attackers |
 | `php artisan crowdsec:cleanup` | Expire bans and remove old event, behavior, and audit records |
+| `php artisan crowdsec:block {ip}` | Block an IP (`--reason`, `--duration` in minutes) |
+| `php artisan crowdsec:unblock {ip}` | Unblock an IP |
 | `php artisan crowdsec:whitelist` | Manage the dynamic IP whitelist (list/add/remove/purge-expired) |
 | `php artisan crowdsec:export` | Export events as JSON, CSV, or RFC 5424 Syslog |
 
@@ -494,9 +522,17 @@ php artisan crowdsec:cleanup --dry-run
 php artisan crowdsec:cleanup --expired
 php artisan crowdsec:cleanup --old-events
 php artisan crowdsec:cleanup --old-behaviors
+php artisan crowdsec:cleanup --audit-logs
 ```
 
-Security events and inactive behavior records are removed after 30 days. Audit records use `CROWDSEC_AUDIT_RETENTION_DAYS`. The `--dry-run` option does not modify data.
+Selectors only run the cleanups they name:
+
+- `--expired` deactivates expired bans and deletes inactive ban rows older than `retention.blocked_ips_days`
+- `--old-events` deletes security events older than `retention.events_days`
+- `--old-behaviors` deletes behavior records inactive for `retention.behavior_days`, and resets the block escalation (`block_count`) of IPs not blocked within `retention.block_count_reset_days`
+- `--audit-logs` deletes audit records older than `CROWDSEC_AUDIT_RETENTION_DAYS`
+
+All retention periods default to 30 days. Rows are deleted in batches of 1,000. The `--dry-run` option does not modify data.
 
 ### SIEM export
 
@@ -507,15 +543,16 @@ php artisan crowdsec:export --format=syslog --severity=critical
 php artisan crowdsec:export --format=json --output=storage/app/crowdsec-events.json
 ```
 
-Supported options are `--format`, `--from`, `--to`, `--severity`, and `--output`. Without `--output`, the export is written to standard output.
+Supported options are `--format`, `--from`, `--to`, `--severity`, `--ip`, `--event-type`, and `--output`. Without `--output`, the export is written to standard output. Events are streamed newest first in batches, so large exports use constant memory. An unknown format, severity, or date, or an unwritable output path, fails the command.
 
 ## Scheduled Maintenance
 
-The package registers these tasks automatically through Laravel's scheduler:
+The package registers these tasks automatically through Laravel's scheduler, each with `withoutOverlapping()` and `onOneServer()`:
 
 - Expired bans: daily
-- Security events older than 30 days: weekly
-- Inactive behavior records older than 30 days: weekly
+- Security events past `retention.events_days`: weekly
+- Inactive behavior records past `retention.behavior_days`, and stale block escalation: weekly
+- Audit records past `CROWDSEC_AUDIT_RETENTION_DAYS`: daily (when audit logging is enabled)
 - Expired dynamic whitelist entries: daily
 
 The application must still run Laravel's scheduler in production, for example through a cron entry that invokes `php artisan schedule:run` every minute.
@@ -530,6 +567,7 @@ protected function schedule(Schedule $schedule): void
     $schedule->command('crowdsec:cleanup --expired')->daily();
     $schedule->command('crowdsec:cleanup --old-events')->weekly();
     $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+    $schedule->command('crowdsec:cleanup --audit-logs')->daily();
     $schedule->command('crowdsec:whitelist purge-expired')->daily();
 }
 ```
@@ -555,8 +593,13 @@ Do not register these fallback schedules when the package tasks already appear i
 | LDAP injection | High | LDAP filter and distinguished-name manipulation |
 | Server-side template injection | Critical | Common expression and template-control syntax |
 | Open redirect | Medium | External URLs supplied through redirect parameters |
+| JNDI / Log4Shell | Critical | `${jndi:…}` and obfuscated `${${lower:j}ndi:…}` lookups in any input, including headers |
 
-Detection runs after URL decoding, double URL decoding, and HTML entity decoding. Default patterns and severities can be reviewed and adjusted in the published configuration.
+Detection runs on the raw input and on decoded versions: up to three layers of URL decoding (including `%uXXXX`), HTML entity decoding, Base64, and a normalized form with NUL bytes and SQL inline comments (`UNION/**/SELECT`) removed and Unicode compatibility characters folded (NFKC, when the `intl` extension is installed). Inputs over 8 KB are scanned in overlapping chunks up to 64 KB, and body nesting past 32 levels is inspected as JSON. Request headers other than the User-Agent, Referer, cookies, and standard content headers are checked by the header injection and JNDI scenarios only.
+
+A WAF block lasts the scenario's `block_duration`, doubled for each repeat offense up to 7 days. JWT claims such as `role=admin` are reported as `jwt_privilege_escalation` in `monitor` mode; set `waf.scenario_modes.jwt_privilege_escalation` to `enforce` to block them. Patterns found inside a JWT payload follow the mode and exclusions of their base scenario.
+
+Default patterns and severities can be reviewed and adjusted in the published configuration.
 
 Because application traffic varies, test configuration changes against representative legitimate requests before deploying stricter patterns or thresholds.
 
@@ -605,7 +648,7 @@ All tables are managed by the package migrations loaded by the service provider.
 2. Protect sensitive routes first, then expand coverage after reviewing legitimate traffic.
 3. Configure trusted proxies so Laravel resolves the actual client IP.
 4. Add internal services and trusted networks to `whitelist_ips` (config) or via `php artisan crowdsec:whitelist add …` (DB layer), using CIDR entries where appropriate.
-5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them.
+5. Keep the REST API, metrics, and dashboard disabled unless needed; retain authentication or signed middleware when enabling them, and define the `viewCrowdSec` / `manageCrowdSec` gates.
 6. Configure Laravel mail or Slack before enabling notifications.
 7. Confirm `php artisan schedule:list` includes cleanup tasks and that the scheduler runs in production.
 8. Monitor `crowdsec:stats`, application logs, security events, and optional metrics.
@@ -635,7 +678,7 @@ composer benchmark
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, validates SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 6 across all package source and route files.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, 12, and 13 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.5 where supported plus one `--prefer-lowest` job, runs the full suite on SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 8 across all package source and route files (existing findings are tracked in `phpstan-baseline.neon`).
 
 The versioned WAF accuracy corpus covers all 15 built-in attack categories plus representative legitimate requests. A zero-failure corpus run guards known false positives, but it is not a statistical claim about production traffic.
 

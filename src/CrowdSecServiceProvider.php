@@ -6,6 +6,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecCleanup;
@@ -68,6 +69,14 @@ class CrowdSecServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
         }
 
+        // Dashboard/API authorization. Deny by default outside `local`; the app
+        // grants access by defining these gates (its providers boot after ours).
+        foreach (['viewCrowdSec', 'manageCrowdSec'] as $ability) {
+            if (! Gate::has($ability)) {
+                Gate::define($ability, fn ($user) => $this->app->environment('local'));
+            }
+        }
+
         // Register views
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'crowdsec');
 
@@ -82,6 +91,8 @@ class CrowdSecServiceProvider extends ServiceProvider
                 CrowdSecCleanup::class,
                 CrowdSecStats::class,
                 CrowdSecWhitelist::class,
+                \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecBlock::class,
+                \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecUnblock::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecExport::class,
                 \RiloArbabillah\LaravelCrowdSec\Console\Commands\CrowdSecDoctor::class,
             ]);
@@ -165,6 +176,7 @@ class CrowdSecServiceProvider extends ServiceProvider
      *   $schedule->command('crowdsec:cleanup --expired')->daily();
      *   $schedule->command('crowdsec:cleanup --old-events')->weekly();
      *   $schedule->command('crowdsec:cleanup --old-behaviors')->weekly();
+     *   $schedule->command('crowdsec:cleanup --audit-logs')->daily();
      */
     protected function registerScheduledCleanup(): void
     {
@@ -172,21 +184,36 @@ class CrowdSecServiceProvider extends ServiceProvider
             // Clean up expired bans daily
             $schedule->command('crowdsec:cleanup --expired')
                 ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup expired bans');
 
             // Clean up old events weekly
             $schedule->command('crowdsec:cleanup --old-events')
                 ->weekly()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup old security events');
 
             // Clean up old behavior records weekly
             $schedule->command('crowdsec:cleanup --old-behaviors')
                 ->weekly()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: cleanup old behavior records');
+
+            // Clean up audit logs past the retention period daily (no-op unless audit is enabled)
+            $schedule->command('crowdsec:cleanup --audit-logs')
+                ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->description('CrowdSec: cleanup audit logs past retention');
 
             // Purge expired whitelist entries daily
             $schedule->command('crowdsec:whitelist purge-expired')
                 ->daily()
+                ->withoutOverlapping()
+                ->onOneServer()
                 ->description('CrowdSec: purge expired whitelist entries');
         });
     }
