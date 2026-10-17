@@ -3,7 +3,8 @@
 namespace RiloArbabillah\LaravelCrowdSec\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use RiloArbabillah\LaravelCrowdSec\Models\SecurityEvent;
 
 class CrowdSecExport extends Command
@@ -13,54 +14,152 @@ class CrowdSecExport extends Command
                            {--from= : Start date (Y-m-d)}
                            {--to= : End date (Y-m-d)}
                            {--severity= : Filter by severity (low, medium, high, critical)}
+                           {--ip= : Filter by IP address}
+                           {--event-type= : Filter by event type}
                            {--output= : Output file path (default: stdout)}';
 
     protected $description = 'Export security events in SIEM-compatible format (JSON, CSV, Syslog)';
 
+    protected const FORMATS = ['json', 'csv', 'syslog'];
+
+    protected const SEVERITIES = ['low', 'medium', 'high', 'critical'];
+
+    protected const CSV_COLUMNS = [
+        'timestamp', 'ip', 'event_type', 'severity', 'request_uri', 'request_method', 'user_agent',
+        'request_id', 'route_name', 'content_type', 'content_length', 'response_status', 'duration_ms',
+        'action_taken', 'country_code', 'asn', 'isp', 'authenticated_user_id_hash', 'browser', 'os',
+        'device_type',
+    ];
+
     public function handle(): int
     {
-        $format = $this->option('format');
-        $query = SecurityEvent::query()->orderBy('created_at', 'desc');
+        $format = (string) $this->option('format');
+        if (! in_array($format, self::FORMATS, true)) {
+            $this->error("Unsupported format \"{$format}\". Use one of: " . implode(', ', self::FORMATS));
 
-        // Apply filters
-        if ($from = $this->option('from')) {
-            $query->where('created_at', '>=', $from);
+            return Command::FAILURE;
         }
-        if ($to = $this->option('to')) {
-            $query->where('created_at', '<=', "{$to} 23:59:59");
+
+        $severity = $this->option('severity');
+        if ($severity !== null && ! in_array($severity, self::SEVERITIES, true)) {
+            $this->error("Unsupported severity \"{$severity}\". Use one of: " . implode(', ', self::SEVERITIES));
+
+            return Command::FAILURE;
         }
-        if ($severity = $this->option('severity')) {
+
+        $query = SecurityEvent::query();
+
+        foreach (['from' => '>=', 'to' => '<='] as $option => $operator) {
+            $value = $this->option($option);
+            if ($value === null) {
+                continue;
+            }
+
+            try {
+                $date = Carbon::parse((string) $value);
+            } catch (\Throwable) {
+                $this->error("Invalid --{$option} date \"{$value}\". Use Y-m-d.");
+
+                return Command::FAILURE;
+            }
+
+            // A plain date covers the whole day; a date-time is used as given.
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $value) === 1) {
+                $date = $option === 'from' ? $date->startOfDay() : $date->endOfDay();
+            }
+
+            $query->where('created_at', $operator, $date);
+        }
+
+        if ($severity !== null) {
             $query->where('severity', $severity);
         }
+        if ($ip = $this->option('ip')) {
+            $query->where('ip', $ip);
+        }
+        if ($eventType = $this->option('event-type')) {
+            $query->where('event_type', $eventType);
+        }
 
-        $events = $query->get();
-
-        if ($events->isEmpty()) {
+        if (! (clone $query)->exists()) {
             $this->info('No events found matching the criteria.');
 
             return Command::SUCCESS;
         }
 
-        $output = match ($format) {
-            'csv' => $this->formatCsv($events),
-            'syslog' => $this->formatSyslog($events),
-            default => $this->formatJson($events),
-        };
+        $outputPath = $this->option('output');
+        $handle = $outputPath ? @fopen((string) $outputPath, 'w') : null;
+        if ($handle === false) {
+            $this->error("Cannot write to {$outputPath}");
 
-        if ($outputPath = $this->option('output')) {
-            file_put_contents($outputPath, $output);
-            $this->info("Exported {$events->count()} events to {$outputPath}");
-        } else {
-            $this->line($output);
+            return Command::FAILURE;
+        }
+
+        $write = $handle
+            ? function (string $chunk) use ($handle, $outputPath): void {
+                if (fwrite($handle, $chunk) === false) {
+                    throw new \RuntimeException("Failed writing to {$outputPath}");
+                }
+            }
+            : fn (string $chunk) => $this->output->write($chunk);
+
+        try {
+            $count = $this->stream($query, $format, $write);
+        } catch (\RuntimeException $e) {
+            $this->error($e->getMessage());
+
+            return Command::FAILURE;
+        } finally {
+            if ($handle) {
+                fclose($handle);
+            }
+        }
+
+        if ($outputPath) {
+            $this->info("Exported {$count} events to {$outputPath}");
         }
 
         return Command::SUCCESS;
     }
 
-    /** @param Collection<int, SecurityEvent> $events */
-    protected function formatJson(Collection $events): string
+    /**
+     * Write events newest first in batches, so memory stays flat on large tables.
+     *
+     * @param  Builder<SecurityEvent>  $query
+     * @param  \Closure(string): void  $write
+     */
+    protected function stream(Builder $query, string $format, \Closure $write): int
     {
-        return $events->map(fn ($event) => [
+        $count = 0;
+
+        if ($format === 'json') {
+            $write("[\n");
+        } elseif ($format === 'csv') {
+            $write(implode(',', self::CSV_COLUMNS) . "\n");
+        }
+
+        foreach ($query->lazyByIdDesc(500) as $event) {
+            $write(match ($format) {
+                'csv' => $this->csvLine($event),
+                'syslog' => $this->syslogLine($event),
+                default => ($count > 0 ? ",\n" : '') . (string) json_encode($this->eventRecord($event), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+            });
+            $count++;
+        }
+
+        if ($format === 'json') {
+            $write("\n]\n");
+        }
+
+        return $count;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function eventRecord(SecurityEvent $event): array
+    {
+        return [
             'timestamp' => $event->created_at->toISOString(),
             'ip' => $event->ip,
             'event_type' => $event->event_type,
@@ -83,46 +182,15 @@ class CrowdSecExport extends Command
             'browser' => $event->browser,
             'os' => $event->os,
             'device_type' => $event->device_type,
-        ])->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        ];
     }
 
-    /** @param Collection<int, SecurityEvent> $events */
-    protected function formatCsv(Collection $events): string
+    protected function csvLine(SecurityEvent $event): string
     {
-        $lines = [implode(',', [
-            'timestamp', 'ip', 'event_type', 'severity', 'request_uri', 'request_method', 'user_agent',
-            'request_id', 'route_name', 'content_type', 'content_length', 'response_status', 'duration_ms',
-            'action_taken', 'country_code', 'asn', 'isp', 'authenticated_user_id_hash', 'browser', 'os',
-            'device_type',
-        ])];
+        $record = $this->eventRecord($event);
+        unset($record['matched_patterns']);
 
-        foreach ($events as $event) {
-            $lines[] = implode(',', array_map([$this, 'csvField'], [
-                $event->created_at->toISOString(),
-                $event->ip,
-                $event->event_type ?? '',
-                $event->severity ?? '',
-                $event->request_data['path'] ?? $event->request_data['uri'] ?? '',
-                $event->request_data['method'] ?? '',
-                $event->request_data['user_agent'] ?? '',
-                $event->request_id,
-                $event->route_name,
-                $event->content_type,
-                $event->content_length,
-                $event->response_status,
-                $event->duration_ms,
-                $event->action_taken,
-                $event->country_code,
-                $event->asn,
-                $event->isp,
-                $event->authenticated_user_id_hash,
-                $event->browser,
-                $event->os,
-                $event->device_type,
-            ]));
-        }
-
-        return implode("\n", $lines) . "\n";
+        return implode(',', array_map([$this, 'csvField'], array_values($record))) . "\n";
     }
 
     protected function csvField(mixed $value): string
@@ -130,40 +198,33 @@ class CrowdSecExport extends Command
         return '"'.str_replace('"', '""', (string) ($value ?? '')).'"';
     }
 
-    /** @param Collection<int, SecurityEvent> $events */
-    protected function formatSyslog(Collection $events): string
+    protected function syslogLine(SecurityEvent $event): string
     {
-        $lines = [];
+        // RFC 5424 format
+        $priority = match ($event->severity) {
+            'critical' => 2,
+            'high' => 3,
+            'medium' => 4,
+            'low' => 6,
+            default => 5,
+        };
 
-        foreach ($events as $event) {
-            // RFC 5424 format
-            $priority = match ($event->severity) {
-                'critical' => 2,
-                'high' => 3,
-                'medium' => 4,
-                'low' => 6,
-                default => 5,
-            };
-
-            $lines[] = sprintf(
-                '<%d>1 %s %s CrowdSec - - - ip=%s event_type=%s severity=%s uri=%s request_id=%s action=%s status=%s duration_ms=%s country=%s asn=%s device=%s',
-                $priority,
-                $event->created_at->toISOString(),
-                gethostname(),
-                $event->ip,
-                $event->event_type ?? 'unknown',
-                $event->severity ?? 'unknown',
-                $event->request_data['path'] ?? $event->request_data['uri'] ?? '-',
-                $event->request_id ?? '-',
-                $event->action_taken ?? '-',
-                $event->response_status ?? '-',
-                $event->duration_ms ?? '-',
-                $event->country_code ?? '-',
-                $event->asn ?? '-',
-                $event->device_type ?? '-',
-            );
-        }
-
-        return implode("\n", $lines) . "\n";
+        return sprintf(
+            '<%d>1 %s %s CrowdSec - - - ip=%s event_type=%s severity=%s uri=%s request_id=%s action=%s status=%s duration_ms=%s country=%s asn=%s device=%s',
+            $priority,
+            $event->created_at->toISOString(),
+            gethostname(),
+            $event->ip,
+            $event->event_type ?? 'unknown',
+            $event->severity ?? 'unknown',
+            $event->request_data['path'] ?? $event->request_data['uri'] ?? '-',
+            $event->request_id ?? '-',
+            $event->action_taken ?? '-',
+            $event->response_status ?? '-',
+            $event->duration_ms ?? '-',
+            $event->country_code ?? '-',
+            $event->asn ?? '-',
+            $event->device_type ?? '-',
+        ) . "\n";
     }
 }

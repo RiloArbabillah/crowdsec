@@ -67,10 +67,14 @@ class CrowdSecService
         'audit',
         'dashboard',
         'event_context',
+        'retention',
         'waf',
     ];
 
     protected SecurityEventContextService $eventContext;
+
+    /** True while withPcreLimits() has the reduced PCRE limits in place. */
+    protected bool $pcreLimitsApplied = false;
 
     public function __construct(?SecurityEventContextService $eventContext = null)
     {
@@ -405,6 +409,15 @@ class CrowdSecService
      * @return list<array<string, mixed>>
      */
     public function checkWafPatterns(Request $request, array $excludedBodyFields = []): array
+    {
+        return $this->withPcreLimits(fn (): array => $this->runWafChecks($request, $excludedBodyFields));
+    }
+
+    /**
+     * @param list<string> $excludedBodyFields
+     * @return list<array<string, mixed>>
+     */
+    protected function runWafChecks(Request $request, array $excludedBodyFields): array
     {
         $threats = [];
         $inputsToCheck = [];
@@ -901,7 +914,10 @@ class CrowdSecService
         // Past the depth limit, inspect the remaining subtree as one JSON
         // string instead of dropping it (deep nesting was a WAF bypass).
         if ($depth > self::MAX_BODY_DEPTH) {
-            $flatData[$prefix ?: 'nested'] = (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            $flatData[$prefix ?: 'nested'] = (string) json_encode(
+                $this->withoutExcludedKeys($data, $excludedFields),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR,
+            );
 
             return $flatData;
         }
@@ -931,6 +947,32 @@ class CrowdSecService
         }
 
         return $flatData;
+    }
+
+    /**
+     * Recursively drop keys named in $excludedFields (plain key names, and
+     * the last segment of dotted patterns) from a subtree.
+     *
+     * @param array<array-key, mixed> $data
+     * @param list<string> $excludedFields
+     * @return array<array-key, mixed>
+     */
+    protected function withoutExcludedKeys(array $data, array $excludedFields): array
+    {
+        $names = array_map(
+            fn ($pattern): string => strtolower(Str::afterLast(trim((string) $pattern), '.')),
+            $excludedFields,
+        );
+
+        foreach ($data as $key => $value) {
+            if (in_array(strtolower((string) $key), $names, true)) {
+                unset($data[$key]);
+            } elseif (is_array($value)) {
+                $data[$key] = $this->withoutExcludedKeys($value, $excludedFields);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -991,8 +1033,15 @@ class CrowdSecService
      */
     public function track404(string $ip): IpBehavior
     {
-        $behavior = IpBehavior::getOrCreate($ip);
-        $behavior->incrementError404Count();
+        [$behavior] = IpBehavior::mutateLocked($ip, function (IpBehavior $behavior): void {
+            $behavior->incrementWindowCounter(
+                'error_404_count',
+                'error_404_window_started_at',
+                (int) ($this->scenarios['behavior']['404_window_minutes'] ?? 60),
+            );
+            $behavior->setAttribute('threat_score', min(100, (float) $behavior->threat_score + 5));
+            $behavior->save();
+        });
 
         return $behavior;
     }
@@ -1047,6 +1096,7 @@ class CrowdSecService
      * @param  array<int, array<string, mixed>>  $threats
      * @param  array<string, mixed>  $extraCounters  Reserved for future counters
      *                                               (e.g. error_404_count) keyed by column name.
+     * @param  float  $additionalThreatScore  Score from non-WAF heuristics (e.g. empty User-Agent)
      */
     public function trackRequest(
         string $ip,
@@ -1055,15 +1105,9 @@ class CrowdSecService
         array $threats = [],
         array $extraCounters = [],
         bool $countRequest = true,
+        float $additionalThreatScore = 0.0,
     ): IpBehavior {
-        if ($countRequest && ! $loginAttempt && empty($threats) && empty($extraCounters)) {
-            $behavior = IpBehavior::getOrCreate($ip);
-            $behavior->incrementRequestCount();
-
-            return $behavior;
-        }
-
-        $totalWeight = $this->totalEnforcedThreatWeight($threats);
+        $totalWeight = $this->totalEnforcedThreatWeight($threats) + max(0.0, $additionalThreatScore);
 
         /** @var IpBehavior $behavior */
         [$behavior] = IpBehavior::mutateLocked($ip, function (IpBehavior $behavior) use (
@@ -1560,6 +1604,9 @@ class CrowdSecService
     public function invalidateAllBlockedCaches(): void
     {
         if ($this->isCacheEnabled()) {
+            // Seed the implicit version 1 first: increment() on a missing key
+            // yields 1, which would leave every cached key valid.
+            $this->cacheStore()->add($this->getBlockedCacheVersionKey(), 1);
             $this->cacheStore()->increment($this->getBlockedCacheVersionKey());
         }
     }
@@ -1588,6 +1635,35 @@ class CrowdSecService
      * @param  string  $subject  Input to match against
      * @return bool Whether the pattern matched
      */
+    /**
+     * Run $callback with reduced PCRE limits (against catastrophic
+     * backtracking), set once for a whole WAF pass rather than per match.
+     *
+     * @template TResult
+     * @param  \Closure(): TResult  $callback
+     * @return TResult
+     */
+    protected function withPcreLimits(\Closure $callback): mixed
+    {
+        if ($this->pcreLimitsApplied) {
+            return $callback();
+        }
+
+        $originalBacktrack = (string) ini_get('pcre.backtrack_limit');
+        $originalRecursion = (string) ini_get('pcre.recursion_limit');
+        ini_set('pcre.backtrack_limit', '10000');
+        ini_set('pcre.recursion_limit', '1000');
+        $this->pcreLimitsApplied = true;
+
+        try {
+            return $callback();
+        } finally {
+            ini_set('pcre.backtrack_limit', $originalBacktrack);
+            ini_set('pcre.recursion_limit', $originalRecursion);
+            $this->pcreLimitsApplied = false;
+        }
+    }
+
     public function safeMatch(string $pattern, string $subject): bool
     {
         $chunkLength = 8192;
@@ -1598,10 +1674,17 @@ class CrowdSecService
         $overlap = 512;
         $limit = min(strlen($subject), 65536);
         for ($offset = 0; $offset < $limit; $offset += $chunkLength - $overlap) {
-            if ($this->safeMatchChunk($pattern, substr($subject, $offset, $chunkLength))) {
+            $isLast = $offset + $chunkLength >= $limit;
+            // A \x01 sentinel at interior chunk edges keeps ^ and $ from
+            // matching there; they should only match the real start and end.
+            $chunk = ($offset > 0 ? "\x01" : '')
+                . substr($subject, $offset, $isLast ? $limit - $offset : $chunkLength)
+                . ($isLast ? '' : "\x01");
+
+            if ($this->safeMatchChunk($pattern, $chunk)) {
                 return true;
             }
-            if ($offset + $chunkLength >= $limit) {
+            if ($isLast) {
                 break;
             }
         }
@@ -1611,20 +1694,7 @@ class CrowdSecService
 
     protected function safeMatchChunk(string $pattern, string $subject): bool
     {
-        // Save current limits
-        $originalBacktrack = ini_get('pcre.backtrack_limit');
-        $originalRecursion = ini_get('pcre.recursion_limit');
-
-        // Reduce limits to prevent catastrophic backtracking
-        ini_set('pcre.backtrack_limit', '10000');
-        ini_set('pcre.recursion_limit', '1000');
-
-        $result = @preg_match($pattern, $subject);
-        $error = preg_last_error();
-
-        // Restore original limits
-        ini_set('pcre.backtrack_limit', $originalBacktrack);
-        ini_set('pcre.recursion_limit', $originalRecursion);
+        [$result, $error] = $this->withPcreLimits(fn (): array => [@preg_match($pattern, $subject), preg_last_error()]);
 
         // Handle PCRE errors (backtrack limit exceeded, recursion limit, etc.)
         if ($error !== PREG_NO_ERROR) {

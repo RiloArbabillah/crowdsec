@@ -49,7 +49,7 @@ Installing with a coding agent? Use the [AI-Assisted Installation Guide](README_
 ## Requirements
 
 - PHP `^8.1`
-- Laravel `^10.0`, `^11.0`, or `^12.0`
+- Laravel `^10.0`, `^11.0`, `^12.0`, or `^13.0`
 - A Laravel-supported database, such as MySQL, PostgreSQL, or SQLite
 
 The latest stable package release is `v1.6.0`.
@@ -325,6 +325,11 @@ The `crowdsec.rate` middleware uses Laravel's atomic rate limiter and returns `R
 | `CROWDSEC_USER_HASH_KEY` | `APP_KEY` | Dedicated HMAC key for stable user hashes |
 | `CROWDSEC_API_ENABLED` | `false` | Enable the REST management API |
 | `CROWDSEC_METRICS_ENABLED` | `false` | Enable the metrics endpoint |
+| `CROWDSEC_METRICS_CACHE_SECONDS` | `15` | Metrics output cache lifetime; `0` disables it |
+| `CROWDSEC_EVENT_RETENTION_DAYS` | `30` | Security event retention for `crowdsec:cleanup` |
+| `CROWDSEC_BEHAVIOR_RETENTION_DAYS` | `30` | Retention of inactive behavior records |
+| `CROWDSEC_BLOCK_RETENTION_DAYS` | `30` | Retention of inactive (expired or unblocked) block rows |
+| `CROWDSEC_BLOCK_COUNT_RESET_DAYS` | `30` | Reset an IP's block escalation after this many days without a block |
 | `CROWDSEC_AUDIT_ENABLED` | `false` | Record manual block and unblock audit events |
 | `CROWDSEC_AUDIT_RETENTION_DAYS` | `365` | Audit record retention period |
 | `CROWDSEC_DASHBOARD_ENABLED` | `false` | Enable the admin dashboard |
@@ -375,6 +380,8 @@ If the application does not use Sanctum, replace the middleware with an equivale
 ### Prometheus metrics
 
 Enable metrics with `CROWDSEC_METRICS_ENABLED=true`. The default path is `/crowdsec/metrics`, protected by `['web', 'auth']`.
+
+The response is cached for `metrics.cache_seconds` (default 15) because each scrape aggregates whole tables.
 
 For monitoring systems that cannot authenticate through a Laravel session, configure a signed URL or a dedicated allowlist middleware. The doctor command rejects an enabled metrics endpoint that has neither `auth` nor `signed` protection.
 
@@ -483,6 +490,8 @@ Expired entries are automatically purged by the daily scheduled task. Use the `e
 | `php artisan crowdsec:doctor` | Validate configuration, migrations, patterns, and integrations |
 | `php artisan crowdsec:stats` | Show blocks, event totals, threat counts, and top attackers |
 | `php artisan crowdsec:cleanup` | Expire bans and remove old event, behavior, and audit records |
+| `php artisan crowdsec:block {ip}` | Block an IP (`--reason`, `--duration` in minutes) |
+| `php artisan crowdsec:unblock {ip}` | Unblock an IP |
 | `php artisan crowdsec:whitelist` | Manage the dynamic IP whitelist (list/add/remove/purge-expired) |
 | `php artisan crowdsec:export` | Export events as JSON, CSV, or RFC 5424 Syslog |
 
@@ -516,7 +525,14 @@ php artisan crowdsec:cleanup --old-behaviors
 php artisan crowdsec:cleanup --audit-logs
 ```
 
-Selectors only run the cleanups they name. Security events and inactive behavior records are removed after 30 days. Audit records use `CROWDSEC_AUDIT_RETENTION_DAYS`. The `--dry-run` option does not modify data.
+Selectors only run the cleanups they name:
+
+- `--expired` deactivates expired bans and deletes inactive ban rows older than `retention.blocked_ips_days`
+- `--old-events` deletes security events older than `retention.events_days`
+- `--old-behaviors` deletes behavior records inactive for `retention.behavior_days`, and resets the block escalation (`block_count`) of IPs not blocked within `retention.block_count_reset_days`
+- `--audit-logs` deletes audit records older than `CROWDSEC_AUDIT_RETENTION_DAYS`
+
+All retention periods default to 30 days. Rows are deleted in batches of 1,000. The `--dry-run` option does not modify data.
 
 ### SIEM export
 
@@ -527,15 +543,15 @@ php artisan crowdsec:export --format=syslog --severity=critical
 php artisan crowdsec:export --format=json --output=storage/app/crowdsec-events.json
 ```
 
-Supported options are `--format`, `--from`, `--to`, `--severity`, and `--output`. Without `--output`, the export is written to standard output.
+Supported options are `--format`, `--from`, `--to`, `--severity`, `--ip`, `--event-type`, and `--output`. Without `--output`, the export is written to standard output. Events are streamed newest first in batches, so large exports use constant memory. An unknown format, severity, or date, or an unwritable output path, fails the command.
 
 ## Scheduled Maintenance
 
-The package registers these tasks automatically through Laravel's scheduler:
+The package registers these tasks automatically through Laravel's scheduler, each with `withoutOverlapping()` and `onOneServer()`:
 
 - Expired bans: daily
-- Security events older than 30 days: weekly
-- Inactive behavior records older than 30 days: weekly
+- Security events past `retention.events_days`: weekly
+- Inactive behavior records past `retention.behavior_days`, and stale block escalation: weekly
 - Audit records past `CROWDSEC_AUDIT_RETENTION_DAYS`: daily (when audit logging is enabled)
 - Expired dynamic whitelist entries: daily
 
@@ -662,7 +678,7 @@ composer benchmark
 composer validate --strict
 ```
 
-The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, and 12 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.4 where supported, validates SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 6 across all package source and route files.
+The test suite uses PHPUnit and Orchestra Testbench. GitHub Actions maps Laravel 10, 11, 12, and 13 explicitly to compatible Testbench releases, covers PHP 8.1 through 8.5 where supported plus one `--prefer-lowest` job, runs the full suite on SQLite, MySQL 8.4, and PostgreSQL 16, enforces at least 85% source line coverage, runs a Composer security audit, and enforces Larastan/PHPStan level 8 across all package source and route files (existing findings are tracked in `phpstan-baseline.neon`).
 
 The versioned WAF accuracy corpus covers all 15 built-in attack categories plus representative legitimate requests. A zero-failure corpus run guards known false positives, but it is not a statistical claim about production traffic.
 
