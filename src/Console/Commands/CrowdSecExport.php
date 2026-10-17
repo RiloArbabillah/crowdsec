@@ -142,7 +142,7 @@ class CrowdSecExport extends Command
             $write(match ($format) {
                 'csv' => $this->csvLine($event),
                 'syslog' => $this->syslogLine($event),
-                default => ($count > 0 ? ",\n" : '') . (string) json_encode($this->eventRecord($event), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                default => ($count > 0 ? ",\n" : '') . (string) json_encode($this->eventRecord($event), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
             });
             $count++;
         }

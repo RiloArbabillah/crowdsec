@@ -5,10 +5,10 @@
 | Field            | Value                              |
 | ---------------- | ---------------------------------- |
 | **Product Name** | `rilo-arbabillah/laravel-crowdsec` |
-| **Version**      | 1.3.x (stable)                    |
+| **Version**      | 1.6.x (stable)                    |
 | **Author**       | Rilo Arbabillah                    |
 | **License**      | MIT                                |
-| **Last Updated** | 2026-07-19                         |
+| **Last Updated** | 2026-10-17                         |
 
 ---
 
@@ -266,9 +266,10 @@ Setiap threat yang terdeteksi harus di-log dengan:
 
 ### FR-15: REST API
 
-6 endpoints: stats, events, blocked, block, unblock, check. Event dapat difilter berdasarkan request ID, route, action, response status, country, ASN, dan user hash.
+9 endpoints: stats, events, blocked, block, unblock, check, dan whitelist (list, add, remove). Event dapat difilter berdasarkan request ID, route, action, response status, country, ASN, dan user hash.
 
-- Disabled by default, configurable middleware
+- Disabled by default, configurable middleware (default `api`, `auth:sanctum`, `throttle:60,1`)
+- Read endpoints butuh gate `viewCrowdSec`, write endpoints butuh `manageCrowdSec`
 
 ### FR-16: Admin Dashboard
 
@@ -532,6 +533,26 @@ routes/
 | MySQL 8.4 and PostgreSQL 16 CI validation | Must Have   | ✅ Done |
 | Larastan/PHPStan level 6                  | Should Have | ✅ Done |
 | Dedicated performance benchmark job       | Should Have | ✅ Done |
+
+### Phase 6: v1.4.0 – v1.6.0 ✅ COMPLETED
+
+| Task                                         | Priority    | Status  |
+| -------------------------------------------- | ----------- | ------- |
+| Dynamic DB-backed IP whitelist               | Must Have   | ✅ Done |
+| `ip_behaviors` deadlock elimination          | Must Have   | ✅ Done |
+| Filament/Livewire login and polling support  | Must Have   | ✅ Done |
+| Label-driven release workflow                | Should Have | ✅ Done |
+
+### Phase 7: post-1.6.0 hardening 🚧 IN REVIEW (#70–#74)
+
+| Task                                                  | Priority    | Status       |
+| ----------------------------------------------------- | ----------- | ------------ |
+| `viewCrowdSec` / `manageCrowdSec` gates, API throttle  | Must Have   | 🔍 In review |
+| Blocking fixes (CIDR families, expiry, score reset)   | Must Have   | 🔍 In review |
+| WAF evasion fixes + Log4Shell scenario                 | Must Have   | 🔍 In review |
+| One behavior lock per request                         | Should Have | 🔍 In review |
+| Configurable retention, streaming export, block CLI   | Should Have | 🔍 In review |
+| Laravel 13 / PHP 8.5, full DB suite, PHPStan level 8  | Should Have | 🔍 In review |
 
 ---
 

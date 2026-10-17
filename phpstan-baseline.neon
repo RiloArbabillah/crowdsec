@@ -1,0 +1,163 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecBlock.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string\|null to string\.$#'
+			identifier: cast.string
+			count: 2
+			path: src/Console/Commands/CrowdSecBlock.php
+
+		-
+			message: '#^Method RiloArbabillah\\LaravelCrowdSec\\Console\\Commands\\CrowdSecDoctor\:\:normalizedMiddleware\(\) should return list\<string\> but returns array\<int, non\-falsy\-string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Console/Commands/CrowdSecDoctor.php
+
+		-
+			message: '#^Parameter \#1 \$string of method Illuminate\\Console\\Command\:\:info\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/Commands/CrowdSecDoctor.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string to string\.$#'
+			identifier: cast.string
+			count: 2
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string\|null to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Cannot cast non\-empty\-array\|float\|int\<min, \-1\>\|int\<1, max\>\|non\-falsy\-string\|true to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Part \$outputPath \(non\-empty\-array\|float\|int\<min, \-1\>\|int\<1, max\>\|non\-falsy\-string\|true\) of encapsed string cannot be cast to string\.$#'
+			identifier: encapsedStringPart.nonString
+			count: 3
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Part \$severity \(array\|bool\|float\|int\|string\) of encapsed string cannot be cast to string\.$#'
+			identifier: encapsedStringPart.nonString
+			count: 1
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Part \$value \(array\|bool\|float\|int\|string\) of encapsed string cannot be cast to string\.$#'
+			identifier: encapsedStringPart.nonString
+			count: 1
+			path: src/Console/Commands/CrowdSecExport.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Illuminate\\Console\\OutputStyle\:\:writeln\(\) expects iterable\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/Commands/CrowdSecStats.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string\|null to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecUnblock.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|non\-empty\-string to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecWhitelist.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string to string\.$#'
+			identifier: cast.string
+			count: 4
+			path: src/Console/Commands/CrowdSecWhitelist.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string\|null to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/Commands/CrowdSecWhitelist.php
+
+		-
+			message: '#^Part \$expiresRaw \(array\|bool\|float\|int\|non\-empty\-string\) of encapsed string cannot be cast to string\.$#'
+			identifier: encapsedStringPart.nonString
+			count: 1
+			path: src/Console/Commands/CrowdSecWhitelist.php
+
+		-
+			message: '#^Cannot access offset ''router'' on Illuminate\\Contracts\\Foundation\\Application\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: src/CrowdSecServiceProvider.php
+
+		-
+			message: '#^Parameter \#2 \$actorId of method RiloArbabillah\\LaravelCrowdSec\\Services\\CrowdSecService\:\:unwhitelistIp\(\) expects int\|null, int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/CrowdSecApiController.php
+
+		-
+			message: '#^Parameter \#5 \$createdBy of method RiloArbabillah\\LaravelCrowdSec\\Services\\CrowdSecService\:\:whitelistIp\(\) expects int\|null, int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/CrowdSecApiController.php
+
+		-
+			message: '#^Method RiloArbabillah\\LaravelCrowdSec\\Http\\Controllers\\CrowdSecMetricsController\:\:sanitizeLabel\(\) should return string but returns string\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Http/Controllers/CrowdSecMetricsController.php
+
+		-
+			message: '#^Parameter \#2 \$excludedBodyFields of method RiloArbabillah\\LaravelCrowdSec\\Services\\CrowdSecService\:\:analyzeRequest\(\) expects list\<string\>, array\<string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Middleware/CrowdSecProtection.php
+
+		-
+			message: '#^Binary operation "\+" between float\|int\|string and int\<1, max\> results in an error\.$#'
+			identifier: binaryOp.invalid
+			count: 2
+			path: src/Http/Middleware/CrowdSecRateLimit.php
+
+		-
+			message: '#^Parameter \#1 \$content of class Symfony\\Component\\HttpFoundation\\Response constructor expects string\|null, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Middleware/CrowdSecRateLimit.php
+
+		-
+			message: '#^Method RiloArbabillah\\LaravelCrowdSec\\Listeners\\SendSecurityAlert\:\:notificationRoutes\(\) should return array\<string, list\<string\>\|string\> but returns array\{\}\|array\{mail\?\: non\-empty\-array\<int, non\-falsy\-string\>, slack\?\: non\-empty\-string\}\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Listeners/SendSecurityAlert.php
+
+		-
+			message: '#^Binary operation "\-" between float\|string and float results in an error\.$#'
+			identifier: binaryOp.invalid
+			count: 1
+			path: src/Models/IpBehavior.php
+
+		-
+			message: '#^Parameter \#2 \$entries of method RiloArbabillah\\LaravelCrowdSec\\Services\\CrowdSecService\:\:matchesAnyEntry\(\) expects list\<string\>, array\<mixed\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Services/CrowdSecService.php
+
+		-
+			message: '#^Parameter \#2 \$patterns of method RiloArbabillah\\LaravelCrowdSec\\Services\\WafPolicy\:\:skipsScenario\(\) expects list\<string\>, array\<int, string\> given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Services/CrowdSecService.php

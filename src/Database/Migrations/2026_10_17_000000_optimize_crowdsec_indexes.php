@@ -16,24 +16,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('security_events', function (Blueprint $table) {
-            $table->index(['event_type', 'severity'], 'security_events_event_type_severity_index');
-            $table->dropIndex('security_events_event_type_index');
+            // Column forms so Laravel derives prefixed index names (prefix_indexes)
+            $table->index(['event_type', 'severity']);
+            $table->dropIndex(['event_type']);
         });
 
         Schema::table('blocked_ips', function (Blueprint $table) {
-            $table->dropIndex('blocked_ips_ip_index');
+            $table->dropIndex(['ip']);
         });
     }
 
     public function down(): void
     {
         Schema::table('blocked_ips', function (Blueprint $table) {
-            $table->index('ip', 'blocked_ips_ip_index');
+            $table->index('ip');
         });
 
         Schema::table('security_events', function (Blueprint $table) {
-            $table->index('event_type', 'security_events_event_type_index');
-            $table->dropIndex('security_events_event_type_severity_index');
+            $table->index('event_type');
+            $table->dropIndex(['event_type', 'severity']);
         });
     }
 };

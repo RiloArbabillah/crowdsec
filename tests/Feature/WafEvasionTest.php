@@ -129,6 +129,29 @@ class WafEvasionTest extends PackageTestCase
         $this->assertTrue($this->service()->isOversizedRequest($request));
     }
 
+    public function test_anchors_do_not_match_at_interior_chunk_edges(): void
+    {
+        $service = $this->service();
+        // ".bak" ends exactly at the end of the second 8KB chunk (7680 + 8192)
+        $subject = str_repeat('a', 7680 + 8192 - 4) . '.bak' . str_repeat('b', 2000);
+
+        $this->assertFalse($service->safeMatch('/\.bak$/i', $subject));
+        $this->assertFalse($service->safeMatch('/^b{10}/', $subject));
+        $this->assertTrue($service->safeMatch('/b{10}$/', $subject));
+    }
+
+    public function test_deep_body_fallback_skips_sensitive_fields(): void
+    {
+        $payload = ['password' => "a' OR 1=1--"];
+        for ($i = 0; $i < 40; $i++) {
+            $payload = ['l' . $i => $payload];
+        }
+
+        $request = Request::create('/api/data', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($payload));
+
+        $this->assertSame([], $this->threatTypes($request));
+    }
+
     // =========================================================================
     // Headers / Log4Shell
     // =========================================================================
@@ -150,6 +173,15 @@ class WafEvasionTest extends PackageTestCase
         ]);
 
         $this->assertContains('jndi_injection', $this->threatTypes($request));
+    }
+
+    public function test_plain_dollar_brace_lookups_in_content_are_not_flagged(): void
+    {
+        $request = Request::create('/posts', 'POST', [
+            'body' => 'In launch.json use ${env:HOME}; in PowerShell run: echo ${env:PATH}. Date: ${date:yyyy}',
+        ], [], [], ['HTTP_USER_AGENT' => 'Mozilla/5.0']);
+
+        $this->assertSame([], $this->threatTypes($request));
     }
 
     public function test_ordinary_headers_are_not_flagged(): void

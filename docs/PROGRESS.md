@@ -1,8 +1,8 @@
 # 📊 Project Progress — Laravel CrowdSec
 
-> Last updated: 28 Aug 2026
-> **Test suite:** 301 passed (612 assertions), plus 9 dedicated performance benchmarks
-> **Next focus:** validate dynamic-whitelist quality gates on GitHub Actions
+> Last updated: 17 Oct 2026
+> **Test suite:** 410 passed (863 assertions) on SQLite, MySQL 8.4, and PostgreSQL, plus 9 dedicated performance benchmarks
+> **Next focus:** merge the post-1.6.0 hardening stack (#70–#74) and release it
 
 ---
 
@@ -16,7 +16,7 @@
 - [x] Enable/disable via `CROWDSEC_ENABLED` env variable
 - [x] `isWhitelisted()` method on service (exact + CIDR matching, hybrid config + DB)
 
-### Pattern Detection (15 Attack Types)
+### Pattern Detection (16 Attack Types)
 
 - [x] SQL Injection (UNION, OR 1=1, stacked queries, SLEEP, BENCHMARK)
 - [x] XSS (script tag, javascript:, event handlers, SVG, base hijack)
@@ -28,6 +28,7 @@
 - [x] Header Injection (CRLF, Location header)
 - [x] Suspicious User Agent (sqlmap, nikto, nmap, burpsuite, etc.)
 - [x] SSRF (AWS metadata, localhost, file://, gopher://)
+- [x] JNDI / Log4Shell (`${jndi:…}` and obfuscated lookups, all inputs incl. headers)
 - [x] XXE (<!ENTITY, <!DOCTYPE SYSTEM, XInclude)
 - [x] NoSQL Injection (MongoDB operators: $ne, $gt, $where)
 - [x] LDAP Injection (filter injection, DN injection)
@@ -198,13 +199,13 @@
 ### CI/CD
 
 - [x] GitHub Actions CI pipeline (`.github/workflows/tests.yml`)
-- [x] Matrix eksplisit Laravel 10/Testbench 8, Laravel 11/Testbench 9, Laravel 12/Testbench 10
-- [x] PHP 8.4 matrix untuk Laravel 10/11/12
+- [x] Matrix eksplisit Laravel 10/Testbench 8, Laravel 11/Testbench 9, Laravel 12/Testbench 10, Laravel 13/Testbench 11
+- [x] PHP 8.1–8.5 matrix (PHP 8.5 untuk Laravel 12/13), plus satu job `--prefer-lowest` (PHP 8.1, Laravel 10)
 - [x] Composer dependency caching
 - [x] SQLite for the Laravel/PHP compatibility matrix
-- [x] Dedicated MySQL 8.4 and PostgreSQL 16 database compatibility jobs
+- [x] Dedicated MySQL 8.4 and PostgreSQL 16 jobs running the full test suite
 - [x] Minimum 85% source line coverage gate dengan PCOV dan Clover
-- [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 6 seluruh source
+- [x] Dedicated quality gate untuk Composer audit dan Larastan/PHPStan level 8 seluruh source (dengan baseline untuk temuan lama)
 - [x] Guarded manual release workflow (metadata, CI, tag, dan GitHub Release)
 
 ### Testing
@@ -213,12 +214,13 @@
 - [x] 22 integration test cases (`CrowdSecMiddlewareTest` — full 10-step pipeline)
 - [x] 20 edge case tests (`EdgeCaseTest` — CIDR, escalation, body analysis, etc.)
 - [x] 8 dedicated performance benchmarks via `composer benchmark` (all < 1ms target)
-- [x] Versioned WAF accuracy corpus: 15 malicious + 20 benign samples
+- [x] Versioned WAF accuracy corpus: 19 malicious + 23 benign samples
 - [x] Expanded feature, doctor, metrics, and notification coverage for v1 hardening
 - [x] Security event context coverage (enforcement, privacy, API, export, GeoIP, UA, HMAC)
 - [x] 10 reliability hardening tests (fixed windows, nested login inspection, auth defaults, rate limiting)
 - [x] WAF policy, GeoIP HTTPS, release validator, login semantics, dan atomic notification coverage
-- [x] Total functional suite: **267 tests, 525 assertions**
+- [x] Security hardening (gates, CIDR families, block expiry, honeypot), WAF evasion, hot-path query-count, and maintenance-command coverage
+- [x] Total functional suite: **410 tests, 863 assertions**
 
 ### Documentation
 
@@ -251,26 +253,36 @@
 
 | Metric                 | Value      |
 | ---------------------- | ---------- |
-| Total source files     | 30         |
-| Total lines of code    | ~4,500     |
-| Attack types detected  | 15         |
-| Regex patterns         | 100+       |
+| Total source files     | 43         |
+| Total lines of code    | ~7,000     |
+| Attack types detected  | 16         |
+| Regex patterns         | 158        |
 | Unit tests             | 31         |
 | Integration tests      | 22         |
 | Edge case tests        | 20         |
 | Performance benchmarks | 8          |
-| **Functional tests**   | **267**    |
-| Test assertions        | 525        |
-| Laravel compatibility  | 10.x, 11.x, 12.x |
+| **Functional tests**   | **410**    |
+| Test assertions        | 863        |
+| Laravel compatibility  | 10.x, 11.x, 12.x, 13.x |
 | PHP minimum            | 8.1        |
-| Package status         | v1.3.0 stable release |
-| CI quality gates       | PHPUnit + 85% coverage + MySQL/PostgreSQL + PHPStan level 6 + Composer audit |
+| Package status         | v1.6.0 stable release |
+| CI quality gates       | PHPUnit + 85% coverage + full suite on MySQL/PostgreSQL + PHPStan level 8 + Composer audit |
 
 ---
 
 ## 📝 Git History
 
 ```
+904e39b  docs: prepare v1.6.0 release
+5144190  fix: harden Filament/Livewire compatibility (#69)
+8ff6aeb  ci: release merged PRs labelled release:patch/minor/major (#68)
+2c334c3  docs: prepare v1.5.0 release
+0897d2d  fix: eliminate ip_behaviors deadlocks and consolidate per-request locking (#67)
+0517e3e  fix: allow CIDR whitelist removal from dashboard
+0a31015  fix: honor whitelist over active IP blocks
+12ab748  docs: prepare v1.4.0 release
+4f8be3b  feat: dynamic IP whitelist — manage trusted IPs at runtime
+28e336f  docs: sync v1.3.0 git history
 451daeb  feat: harden production quality gates
 6cd511d  ci: upgrade checkout action to v7
 563296c  docs: prepare v1.2.0 release
@@ -291,14 +303,4 @@ e76d4e4  fix: enforce audit retention cleanup (#55) (#66)
 cb07b44  chore: align release docs for v1 (#56) (#65)
 d517a26  chore: add static analysis quality gate (#60) (#64)
 6ef3079  fix: harden optional endpoint defaults (#57) (#63)
-e903852  fix: wire Slack notifications end-to-end (#58) (#62)
-0e78512  fix: align metrics test fixtures (#59) (#61)
-f7c24a6  feat: add request body deep inspection (#46) (#54)
-481d5d2  feat: add immutable audit log for compliance (#49) (#53)
-d84aea6  feat: add Prometheus/OpenMetrics metrics endpoint (#48) (#52)
-a39ae19  feat: add crowdsec:doctor health check command (#50) (#51)
-cf4ec0b  chore: add LICENSE, .gitattributes, update composer.json for Packagist
-91ed2b0  feat: add Laravel 12 compatibility support (#35) (#45)
-22bfaa3  chore: prepare v1.0.0 stable release (#38) (#44)
-b5ab47c  security: audit regex patterns for ReDoS vulnerability (#37) (#43)
 ```

@@ -415,9 +415,8 @@ return [
     'jndi_injection' => [
         'patterns' => [
             '/\$\{\s*jndi\s*:/i',
-            // Obfuscated lookups: ${${lower:j}ndi:...}, ${${::-j}ndi:...}, ${env:...}
+            // Obfuscated lookups: ${${lower:j}ndi:...}, ${${::-j}ndi:...}
             '/\$\{\s*\$\{\s*(lower|upper|::-)/i',
-            '/\$\{\s*(env|sys|java|main|ctx|date)\s*:[^}]{0,60}\}/i',
         ],
         'weight' => 10,
         'block_duration' => 1440, // 24 hours

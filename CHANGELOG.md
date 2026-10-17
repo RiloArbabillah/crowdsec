@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`crowdsec:block {ip}` and `crowdsec:unblock {ip}` commands** — manual blocks with `--reason` and `--duration`
 - **Configurable retention** — new `retention` config (`events_days`, `behavior_days`, `blocked_ips_days`, `block_count_reset_days`, all default 30, with `CROWDSEC_*_RETENTION_DAYS` / `CROWDSEC_BLOCK_COUNT_RESET_DAYS` variables). It is a new top-level key, so published configs pick it up automatically
 - **`crowdsec:export --ip` and `--event-type` filters**
+- **Laravel 13 support** — `illuminate/*` `^13.0` and Testbench `^11.0`; CI covers Laravel 13 on PHP 8.3–8.5, Laravel 12 on PHP 8.5, and a `--prefer-lowest` job (PHP 8.1, Laravel 10)
+- **Migration `2026_10_17_000001_widen_whitelisted_ips_expires_at.php`** — MySQL/MariaDB only (no-op elsewhere)
 
 ### Security
 
@@ -40,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`blocked_ips` grew forever** — expired and unblocked rows were only flagged inactive. `crowdsec:cleanup --expired` now deletes inactive rows older than `retention.blocked_ips_days`
 - **Block escalation never decayed for busy IPs** — `block_count` was only cleared when an IP's behavior row was deleted after 30 days of inactivity, so shared/NAT IPs stayed at the 7-day cap. `--old-behaviors` resets it for IPs not blocked within `retention.block_count_reset_days`
 - **`crowdsec:export` loaded every event into memory and accepted bad options** — it now streams in batches, fails on an unknown `--format`/`--severity`, an invalid `--from`/`--to`, or an unwritable `--output` (previously an unknown format silently produced JSON and write errors were ignored). A date-time `--from`/`--to` is used as given; a plain date still covers the whole day
+- **Whitelist entries expiring after 2038 failed on MySQL** — `whitelisted_ips.expires_at` was a MySQL `TIMESTAMP`, which ends at 2038-01-19, so `crowdsec:whitelist add --expires=2099-12-31` raised a database error. The column is now `DATETIME` on MySQL/MariaDB
 
 ### Changed
 
@@ -50,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crowdsec:cleanup` deletes in batches of 1,000 rows instead of one large `DELETE`
 - Scheduled cleanup tasks run with `withoutOverlapping()` and `onOneServer()`
 - The metrics endpoint caches its output for `metrics.cache_seconds` (default 15; `0` disables)
+- CI runs the full test suite on MySQL 8.4 and PostgreSQL 16 (previously three files), and PHPStan runs at level 8 with a baseline for existing findings
 
 ### Upgrade Notes
 
