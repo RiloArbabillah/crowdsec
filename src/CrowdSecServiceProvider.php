@@ -144,7 +144,7 @@ class CrowdSecServiceProvider extends ServiceProvider
                 }
 
                 $request->attributes->remove(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE);
-                $service->trackLoginAttempt($ip);
+                $service->trackLoginAttempt($ip, addThreatScore: false);
                 $request->attributes->set(CrowdSecService::FAILED_LOGIN_TRACKED_ATTRIBUTE, $ip);
 
                 if ($service->exceedsLoginThreshold($ip)) {

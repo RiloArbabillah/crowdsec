@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Failed logins pre-empted `login_threshold` with a 4-hour block** — failed logins counted through the `Failed` auth event no longer add threat score, so the 15-minute `login_threshold` block applies instead of a 240-minute `behavior_threshold` block after the 5th failure (manual `trackLoginAttempt()` calls still add threat score by default)
+
 ## [1.7.0] - 2026-10-17
 
 ### Added
